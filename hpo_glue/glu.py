@@ -38,6 +38,17 @@ class Result:
         self.result = result
 
 
+class Hist_Storage(ABC):
+    def create_run_dir(self) -> None:
+        ...
+
+    def save_config(self) -> None:
+        ...
+
+    def save_results(self, result: Result) -> None:
+        ...
+
+
 class Optimizer(ABC):
     def ask(self) -> Query:
         ...
@@ -73,4 +84,4 @@ class TabularBenchmark(Benchmark):
 
     def query(self, query: Query) -> Result:
         """Query the benchmark for a result"""
-        
+        result = self.table.query(query.config.values)

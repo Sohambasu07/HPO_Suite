@@ -174,8 +174,8 @@ def lcbench_tabular(task_id: str, datadir: Path) -> TabularBenchmark:
     return TabularBenchmark(
         name=f"lcbench-tabular-{task_id}",
         table=table_for_task,
-        id_key =
-        config_keys=...,  # Keys in the table that correspond to the config values
-        result_key=...,  # Key in the table that corresponds to the result
-        fidelity_key=...,  # Key in the table that corresponds to the fidelity (e.g. "epoch")
+        # id_key=...,  # Key in the table to uniquely identify tasks
+        config_keys=table_for_task.loc["config"],  # Keys in the table that correspond to configs
+        result_key=table_for_task.loc["results"],  # Key in the table that corresponds to the result
+        # fidelity_key=...,  # Key in the table that corresponds to the fidelity (e.g. "epoch")
     )

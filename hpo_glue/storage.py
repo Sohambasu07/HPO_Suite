@@ -3,9 +3,10 @@ from ConfigSpace import ConfigurationSpace, Configuration
 from tt import Result
 import json
 import os
+from glu import Hist_Storage
 
 
-class Storage:
+class Storage(Hist_Storage):
     def __init__(self, config_space: ConfigurationSpace, curr_seed: int, curr_config: Configuration,
                  run_id: str, run_dir: str, save: bool = True):
         self.config_space = config_space
