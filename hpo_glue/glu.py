@@ -6,6 +6,9 @@ from typing import Any, Callable, ClassVar
 from typing_extensions import Self
 from ConfigSpace import ConfigurationSpace, Configuration
 import pandas as pd
+import os
+import datetime
+import numpy as np
 
 import logging
 
@@ -151,6 +154,7 @@ class GLUE:
         optimizer: type[Optimizer],
         benchmark: Benchmark,
         budget: int, # number of trials
+        save_dir: Path,
         is_tabular: bool = False,
     ) -> GLUEReport:
         """Runs an optimizer on a benchmark, returning a report."""
@@ -158,6 +162,7 @@ class GLUE:
         history: list[Result] = []
         opt = optimizer(config_space=benchmark.configs,
                         fidelity_space=benchmark.fidelities)
+        report = []
         while (
             trial<budget
         ):  # e.g. n_trials, duration, etc...
@@ -165,7 +170,7 @@ class GLUE:
             # such as n_workers > 1, contunuing from a checkpoint, etc...
             # Ignore these for now, just specifying that this is likely where this kind of logic
             # would get executed.
-            logger.info(f"\nTrial {trial}\n")
+            logger.info(f"Trial {trial}\n")
             print("-------------------------------")
             config = opt.ask(is_tabular=is_tabular)
             result = benchmark.query(config)
@@ -173,7 +178,32 @@ class GLUE:
             opt.tell(result)
             trial += 1
             logger.info(result.result)
+
             print("-------------------------------\n")
 
+            configs = [val for key,val in result.query.config.values.items()]
+            results = [val for key, val in result.result.items()]
+
+            report.append([trial, optimizer.name, benchmark.name, 
+                           result.query.config.id, result.query.fidelity])
+
+            report[-1].extend(configs)
+            report[-1].extend(results)
+            
+
+        cols = ["Trial", "Optimizer", "Benchmark", "Config id", "Fidelity"]
+        conf_columns = [confs for confs in benchmark.config_keys]
+        result_columns = [result for result in benchmark.result_keys]
+        cols.extend(conf_columns)
+        cols.extend(result_columns)
+
+        report = pd.DataFrame(report, columns=cols)
+
+        if os.path.exists(save_dir) is False:
+            os.mkdir(save_dir)
+        filename = "report" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + ".csv"
+        report.to_csv(save_dir / filename, mode='a', header=True, index=False)
+        print(report)
+            
 
         return GLUEReport(optimizer.name, benchmark.name, history)
