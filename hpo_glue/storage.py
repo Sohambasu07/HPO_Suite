@@ -1,9 +1,8 @@
 from typing import List, Dict, Any, Optional
 from ConfigSpace import ConfigurationSpace, Configuration
-from tt import Result
+from hpo_glue.glu import Result, Hist_Storage
 import json
 import os
-from glu import Hist_Storage
 
 
 class Storage(Hist_Storage):
