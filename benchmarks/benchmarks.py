@@ -1,6 +1,6 @@
 from typing import Dict, Any
 from hpo_glue.glu import Benchmark
-from lcbench import LCBenchTabular, LCBenchSetup, lcbench_tabular
+from benchmarks.mfp_bench import lcbench_tabular
 
 def get_benchmark(name: str, **kwargs) -> Benchmark:
     """Entry point of the repo to get a benchmark."""
