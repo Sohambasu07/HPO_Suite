@@ -6,8 +6,13 @@ import random
 class RandomSearch(Optimizer):
     name: ClassVar[str] = "RandomSearch"
 
-    def __init__(self, config_space: ConfigurationSpace | list[Config], seed: Optional[int] = None):
+    def __init__(self, 
+                 config_space: ConfigurationSpace | list[Config], 
+                 fidelity_space = ConfigurationSpace | list[int],
+                   seed: Optional[int] = None):
+        
         self.config_space = config_space
+        self.fidelity_space = fidelity_space
         self.seed = None
         if seed is None:
             self._set_seed()
@@ -23,11 +28,14 @@ class RandomSearch(Optimizer):
         self.seed = random.randint(0, 10**5)
         random.seed(self.seed)
     
-    def ask(self, config_id: str, is_tabular: bool = False) -> Query:
+    def ask(self, 
+            config_id: Optional[str] = None, 
+            is_tabular: bool = False) -> Query:
         #Ask the optimizer for a new config to evaluate
         if is_tabular:
             config = random.choice(self.config_space)
-            return Query(Config(config_id, config))
+            fidelity = random.choice(self.fidelity_space)
+            return Query(config, fidelity)
         config = self.get_config(1)
         return Query(Config(config_id, config))
     
