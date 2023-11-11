@@ -1,8 +1,7 @@
 """Script to perform HPO using Random Search on LCBench Tabular Benchmark"""
 
 import logging
-import pandas as pd
-from hpo_glue.glu import *
+from hpo_glue.glu import GLUE, GLUEReport
 from optimizers.random_search import RandomSearch
 from pathlib import Path
 from benchmarks.benchmarks import get_benchmark
@@ -36,8 +35,7 @@ def rs_lcbench(n_trials = 1,
     glu_report = GLUE.run(optimizer, 
                           benchmark, 
                           n_trials,
-                          save_dir = save_dir,
-                          is_tabular=True)
+                          save_dir = save_dir)
     
     # Report the results
     logger.info("Random Search on LCBench Tabular Benchmark complete \n")
