@@ -2,7 +2,7 @@ from __future__ import annotations  # Makes things like `dict[str, Any]` work
 
 from abc import ABC
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from ConfigSpace import ConfigurationSpace, Configuration
 import pandas as pd
 import os
@@ -126,10 +126,10 @@ class TabularBenchmark(Benchmark):
     table: pd.DataFrame
     """ The table holding all information """
 
-    configs: list[Config]  
+    config_space: list[Config]  
     """ All possible configs for the benchmark """
 
-    fidelities: list[int] | list[float]  
+    fidelity_space: list[int] | list[float]  
     """ All possible fidelities for the benchmark """
 
     def __init__(
@@ -219,19 +219,18 @@ class TabularBenchmark(Benchmark):
         self.fidelity_key = fidelity_key
         self.config_keys = sorted(config_keys)
         self.result_keys = sorted(result_keys)
-        self.configs = self._get_all_configs()
-        self.fidelities, self.fidelity_range = self._get_all_fidelities()
+        self.config_space = self._get_all_configs()
+        self.fidelity_space, self.fidelity_range = self._get_all_fidelities()
         
 
     def query(self, query: Query) -> Result:
         """Query the benchmark for a result"""
 
-        max_fidelity = self.fidelities[-1]
         at = None
         if query.fidelity is not None:
             at = query.fidelity
         else:   
-            at = max_fidelity
+            at = self.fidelity_range[1]
         result = self.table.loc[(query.config.id, at)]
         result = result.get(self.result_keys).to_dict()
         return Result(query, result)
@@ -272,6 +271,27 @@ class TabularBenchmark(Benchmark):
         #   ...
 
         return sorted_fids, (start, end, step)
+    
+
+class SurrogateBenchmark(Benchmark):
+    def __init__(
+        self,
+        name: str,
+        config_space: ConfigurationSpace,
+        fidelity_space: list[int] | list[float],
+        query_function: Callable[[Query], Result],
+        benchmark
+    ) -> None:
+        self.name = name
+        self.config_space = config_space
+        self.fidelity_space = fidelity_space
+        self.query_function = query_function
+        self.benchmark = benchmark
+
+    def query(self, query: Query) -> Result:
+         result = self.query_function(self.benchmark, query)
+         return Result(query, result)
+
 
 class GLUEReport:
     optimizer_name: str
@@ -303,8 +323,8 @@ class GLUE:
         """Runs an optimizer on a benchmark, returning a report."""
         trial = 0
         history = History()
-        opt = optimizer(config_space=benchmark.configs,
-                        fidelity_space=benchmark.fidelities)
+        opt = optimizer(config_space=benchmark.config_space,
+                        fidelity_space=benchmark.fidelity_space)
         while (
             trial<budget
         ):  # e.g. n_trials, duration, etc...
@@ -325,8 +345,8 @@ class GLUE:
 
         cols = (
             ["Config id", "Fidelity"]
-            + benchmark.config_keys
-            + benchmark.result_keys
+            + list(result.query.config.values.keys())
+            + list(result.result.keys())
         )
 
         report = history.df(cols)
