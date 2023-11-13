@@ -319,12 +319,14 @@ class GLUE:
         benchmark: Benchmark,
         budget: int, # number of trials
         save_dir: Path,
+        seed: int | None = None,
     ) -> GLUEReport:
         """Runs an optimizer on a benchmark, returning a report."""
         trial = 0
         history = History()
         opt = optimizer(config_space=benchmark.config_space,
-                        fidelity_space=benchmark.fidelity_space)
+                        fidelity_space=benchmark.fidelity_space,
+                        seed=seed)
         while (
             trial<budget
         ):  # e.g. n_trials, duration, etc...
@@ -334,7 +336,7 @@ class GLUE:
             # would get executed.
             logger.info(f"Trial {trial}\n")
             print("-------------------------------")
-            config = opt.ask()
+            config = opt.ask(config_id=str(trial))
             result = benchmark.query(config)
             history.add(result)
             opt.tell(result)
