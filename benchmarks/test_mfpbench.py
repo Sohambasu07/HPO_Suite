@@ -1,34 +1,39 @@
 import mfpbench
 from pathlib import Path
-import os
-
-data_dir = Path("./data") / "lcbench-tabular"
+import argparse
 
 
-lcbench_adult_tabular = mfpbench.get("lcbench_tabular", task_id="adult", datadir=data_dir)
-table = lcbench_adult_tabular.table
-print(table.columns)
+def test_mfpbench(data_dir: Path, 
+                  benchmark_name: str, 
+                  task_id: str = None,
+                  fidelity: int = None) -> None:
 
-# print(lcbench_adult_tabular.query({"id": 0}, at=26))
-print(table.loc[('77', 14)])
-# print(table.index.get_level_values("epoch").unique()[-1])
+    if ("lcbench" in benchmark_name or benchmark_name == "jahs"):
+        bench = mfpbench.get(benchmark_name, task_id=task_id, datadir=data_dir)
+    else:
+        bench = mfpbench.get(benchmark_name, datadir=data_dir)
+
+    if isinstance(bench, mfpbench.tabular.TabularBenchmark):
+        table = bench.table
+        print(table.columns)
+        print(table.loc[('77', 14)])
+
+    else:
+        config = bench.sample()
+        print(bench.query(config, at=fidelity))
+        print(bench.space)
+        print(bench.fidelity_range)
 
 
-# count = 0
-# for id, data in table.iterrows():
-#     print(id)
-#     # print(dict(zip(["time", "momentum"], data.get(["time", "momentum"]).values)))
-#     print(data)
-#     print(data.get(["time", "momentum"]).to_dict())
-#     print(type(data))
-#     # print(config)
-#     count+=1
-#     if count>0:
-#         break
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Test the MF Prior Bench library")
+    parser.add_argument("--data_dir", type=str, default=Path("./data"))
+    parser.add_argument("--benchmark_suite", type=str, default="lcbench-tabular")
+    parser.add_argument("--benchmark_name", type=str, default=None)
+    parser.add_argument("--task_id", type=str, default="adult")
+    parser.add_argument("--fidelity", type=int, default=None)
+    args = parser.parse_args()
 
+    data_dir = args.data_dir / args.benchmark_suite
 
-
-# print(table.idxmax())
-# print(type(lcbench_adult_tabular))
-# config = lcbench_adult_tabular.sample()
-# print(lcbench_adult_tabular.query(config, at=22))
+    test_mfpbench(data_dir, args.benchmark_name, args.task_id, args.fidelity)

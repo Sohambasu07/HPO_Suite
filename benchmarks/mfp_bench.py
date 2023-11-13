@@ -3,12 +3,11 @@
 import mfpbench
 from pathlib import Path
 
-from hpo_glue.glu import TabularBenchmark
+from hpo_glue.glu import TabularBenchmark, SurrogateBenchmark, Query
 
 def lcbench_tabular(task_id: str, datadir: Path) -> TabularBenchmark:
 
-    data_dir = datadir
-    table = mfpbench.get("lcbench_tabular", task_id=task_id, datadir=data_dir)
+    table = mfpbench.get("lcbench_tabular", task_id=task_id, datadir=datadir)
     table_for_task = table.table
     return TabularBenchmark(
         name=f"lcbench_tabular_{task_id}",
@@ -19,7 +18,19 @@ def lcbench_tabular(task_id: str, datadir: Path) -> TabularBenchmark:
         fidelity_key=table.fidelity_key,  # Key in the table that corresponds to the fidelity (e.g. "epoch")
     )
 
-# def query_mfpbench(table: pd.DataFrame, query: Query) -> Result:
-#     #Query the benchmark for a result
-#     result = 
-#     return Result(query, result
+def yahpo_surrogate_benchmark(benchmark_name: str, task_id: str, datadir: Path) -> SurrogateBenchmark:
+    datadir = datadir / "yahpo"
+    bench = mfpbench.get(benchmark_name, task_id=task_id, datadir=datadir)
+    fid_range = bench.fidelity_range
+    fidelity_space = list(range(fid_range[0], fid_range[1] + 1, fid_range[2]))
+    return SurrogateBenchmark(
+        name="yahpo" + "_" + benchmark_name + "_" + task_id,
+        config_space = bench.space,
+        fidelity_space=fidelity_space,
+        query_function=yahpo_query_function,
+        benchmark=bench,
+    )
+
+def yahpo_query_function(benchmark, query: Query):
+    q = benchmark.query(query.config.values, at=query.fidelity)
+    return q.dict()
