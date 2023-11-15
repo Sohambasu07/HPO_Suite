@@ -1,5 +1,5 @@
 from ConfigSpace import ConfigurationSpace, Configuration
-from typing import ClassVar
+from typing import ClassVar, Any
 from pathlib import Path
 from hpo_glue.glu import Optimizer, Query, Result, Config, ProblemStatement
 import random
@@ -27,6 +27,9 @@ class RandomSearch(Optimizer):
         self.config_space.seed(self.seed)
         config = self.config_space.sample_configuration(num_configs)
         return config
+    
+    def get_incumbent(self) -> Any:
+        return None
     
     def ask(self,   
             config_id: str | None = None) -> Query:

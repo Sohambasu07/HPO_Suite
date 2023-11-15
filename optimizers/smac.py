@@ -1,6 +1,6 @@
 import os
 from ConfigSpace import ConfigurationSpace
-from typing import ClassVar
+from typing import ClassVar, Any
 from pathlib import Path
 import random
 from hpo_glue.glu import Optimizer, Query, Result, Config, ProblemStatement
@@ -47,9 +47,17 @@ class SMAC_Optimizer(Optimizer):
 
 
         facade = self.get_facade()
+        self.intensifier = facade.get_intensifier(
+            self.scenario,
+            max_config_calls=1,
+        )
         self.smac = facade(scenario=self.scenario,
                          target_function=lambda seed: self.seed,
+                         intensifier=self.intensifier,
                          overwrite=True)
+        
+    def get_incumbent(self) -> Any:
+        return self.intensifier.get_incumbent()
 
 
     def get_facade(self):
@@ -83,7 +91,7 @@ class SMAC_Optimizer(Optimizer):
     def tell(self,
              result: Result) -> None:
         """ Tell SMAC the result of the query """
-        cost = result.result[self.objective]
+        cost = result.result[self.objectives]   #Not considering Multifidelity for now
         if self.minimize is False:
             cost = 1.0 - cost
         self.smac_val = TrialValue(cost = cost, time = 0.0)

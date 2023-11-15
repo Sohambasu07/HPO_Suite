@@ -180,6 +180,9 @@ class Optimizer(ABC):
     ) -> None:
         ...
 
+    def get_incumbent(self) -> Any:
+        ...
+
     def ask(self) -> Query:
         ...
 
@@ -425,6 +428,7 @@ class GLUE:
             opt.tell(result)
             trial += 1
             logger.info(result.result)
+            logger.info(opt.get_incumbent())
 
             print("-------------------------------\n")
 
