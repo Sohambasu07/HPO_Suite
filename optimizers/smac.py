@@ -63,8 +63,6 @@ class SMAC_Optimizer(Optimizer):
     def get_facade(self):
         if self.is_multifidelity:
             return MFFacade
-        elif self.is_manyfidelity:
-            return HBFacade
         else:
             return HPOFacade
     
