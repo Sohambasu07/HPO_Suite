@@ -2,7 +2,6 @@
 
 import mfpbench
 from pathlib import Path
-
 from hpo_glue.glu import TabularBenchmark, SurrogateBenchmark, Query
 
 def lcbench_tabular(task_id: str, datadir: Path) -> TabularBenchmark:
@@ -30,6 +29,16 @@ def yahpo_surrogate_benchmark(benchmark_name: str, task_id: str, datadir: Path) 
         query_function=yahpo_query_function,
         benchmark=bench,
     )
+
+# class YahpoSurrogateQuerier:
+
+#     def __call__(self, query: Query) -> Result:
+#         config = massage_into_yahpo_format(query.config)
+#         fidelity = also_massage_into_yahpo_format(query.fidelity)
+
+#         # Get some arbitrary thing out of this surrogate
+#         result_dict = self.yahpo_benchmark.get_result(config, fidelity)
+#         return Result(query=query, result=result_dict)
 
 def yahpo_query_function(benchmark, query: Query):
     q = benchmark.query(query.config.values, at=query.fidelity)

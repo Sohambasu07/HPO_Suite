@@ -1,18 +1,22 @@
 from ConfigSpace import ConfigurationSpace, Configuration
 from typing import ClassVar
-from hpo_glue.glu import Optimizer, Query, Result, Config
+from pathlib import Path
+from hpo_glue.glu import Optimizer, Query, Result, Config, ProblemStatement
 import random
 
 class RandomSearch(Optimizer):
     name: ClassVar[str] = "RandomSearch"
 
     def __init__(self, 
-                 config_space: ConfigurationSpace | list[Config], 
-                 fidelity_space = ConfigurationSpace | list[int] | list[float],
+                 ProblemStatement: ProblemStatement,
+                 working_directory: Path,
                  seed: int | None = None):
-        
-        self.config_space = config_space
-        self.fidelity_space = fidelity_space
+        """ Create a Random Search Optimizer instance for a given problem statement """
+
+        self.problem = ProblemStatement
+        self.config_space = ProblemStatement.config_space
+        self.fidelity_space = ProblemStatement.fidelity_space
+        self.objectives = ProblemStatement.result_keys
         self.seed = seed
         self.rng = random.Random(seed)
         

@@ -1,7 +1,7 @@
 """Script to perform HPO using Random Search on LCBench Tabular Benchmark"""
 
 import logging
-from hpo_glue.glu import GLUE, GLUEReport
+from hpo_glue.glu import GLUE, GLUEReport, ProblemStatement
 from optimizers.random_search import RandomSearch
 from pathlib import Path
 from benchmarks.benchmarks import get_benchmark
@@ -32,12 +32,22 @@ def rs_lcbench(n_trials,
     # Get the optimizer
     optimizer = RandomSearch
 
+    ps = ProblemStatement(
+        name = "Random_Search_on_LCBench_Tabular",
+        config_space = benchmark.config_space,
+        fidelity_space = benchmark.fidelity_space,
+        result_keys = "test_cross_entropy",
+        minimize = True,
+        n_trials = n_trials,
+    )
+
     # Run the optimizer on the benchmark using GLUE
-    glu_report = GLUE.run(optimizer, 
-                          benchmark, 
-                          n_trials,
-                          save_dir,
-                          seed)
+    glu_report = GLUE.run(problem=ps,
+                          optimizer=optimizer, 
+                          benchmark=benchmark, 
+                          budget=n_trials,
+                          save_dir=save_dir,
+                          seed=seed)
     
     # Report the results
     logger.info("Random Search on LCBench Tabular Benchmark complete \n")
