@@ -92,6 +92,84 @@ class History:
         report.to_csv(savedir / filename, mode='a', header=True, index=False)
 
 
+class ProblemStatement:
+    name: str
+    """The name of the problem statement. This is used to identify the problem statement
+    in the results and in the filesystem"""
+
+    config_space: ConfigurationSpace | list[Config]
+    """The space of configs to optimize over.
+
+    * list[Config]-> tabular
+    *  ConfigurationSpace -> surrogate
+    """
+
+    fidelity_space: ConfigurationSpace | list[int] | list[float]
+    """The space of fidelities for Multifidelity/ Manyfidelity Optimization"""
+
+    result_keys: str | list[str]
+    """The key(s) in the result that we want to consider as the objective value
+
+    * str -> single objective
+    * list[str] -> multi-objective
+    """
+
+    fidelity_keys: str | list[str] | None
+    """The key(s) in the result that we want to consider as the fidelity
+
+    * str -> single fidelity parameter
+    * list[str] -> many fidelity parameters
+    * None -> no fidelity
+    """
+
+    minimize: bool | list[bool]
+    """Whether to minimize or maximize the objective value. One per objective"""
+
+    n_trials: int
+    """The number of trials to run the optimizer for"""
+
+    def __init__(
+        self,
+        name: str,
+        config_space: ConfigurationSpace | list[Config],
+        fidelity_space: ConfigurationSpace | list[int] | list[float],
+        result_keys: str | list[str],
+        fidelity_keys: str | list[str] | None = None,
+        minimize: bool | list[bool] = True,
+        n_trials: int = 1,
+    ) -> None:
+        cls = self.__class__
+        cls.name = name
+        cls.config_space = config_space
+        cls.fidelity_space = fidelity_space
+        cls.result_keys = result_keys
+        cls.fidelity_keys = fidelity_keys
+        cls.minimize = minimize
+        cls.n_trials = n_trials
+
+    # TODO: Will also need to define some criteria for stopping the optimization.
+    # Easiest example is n_trials but more difficult to define is "fidelity_budget"
+    # used or "time_budget" used.
+
+    # The properties below are just to advertise what kind of problems we can define
+    # with the above properties.
+    @property
+    def is_tabular(self) -> bool:
+        return isinstance(self.config_space, list)
+
+    @property
+    def is_multiobjective(self) -> bool:
+        return isinstance(self.result_keys, list)
+
+    @property
+    def is_multifidelity(self) -> bool:
+        return isinstance(self.fidelity_keys, str)
+
+    @property
+    def is_manyfidelity(self) -> bool:
+        return isinstance(self.fidelity_keys, list)
+
+
 class Optimizer(ABC):
     """ Defines the common interface for Optimizers """
 
@@ -314,7 +392,7 @@ class GLUE:
     root: Path
 
     def run(
-        # problem: ProblemStatement,
+        problem: ProblemStatement,
         optimizer: type[Optimizer],
         benchmark: Benchmark,
         budget: int, # number of trials
@@ -324,9 +402,14 @@ class GLUE:
         """Runs an optimizer on a benchmark, returning a report."""
         trial = 0
         history = History()
-        opt = optimizer(config_space=benchmark.config_space,
-                        fidelity_space=benchmark.fidelity_space,
-                        seed=seed)
+        GLUE.root = Path('./')
+
+        optimizer_working_path = (
+            GLUE.root / optimizer.name / benchmark.name / problem.name
+        )
+        opt = optimizer(ProblemStatement=problem, working_directory=optimizer_working_path)
+
+
         while (
             trial<budget
         ):  # e.g. n_trials, duration, etc...
