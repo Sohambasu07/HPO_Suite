@@ -7,6 +7,7 @@ from ConfigSpace import ConfigurationSpace, Configuration
 import pandas as pd
 import os
 import datetime
+import matplotlib.pyplot as plt
 
 import logging
 
@@ -180,13 +181,21 @@ class Optimizer(ABC):
     ) -> None:
         ...
 
-    def get_incumbent(self) -> Any:
+    def get_incumbent(self) -> tuple[Any, float | dict[Any, tuple[str, float]]]:
+        """Return the incumbent config and its objective value(s)
+
+        For single objective, return a tuple of (config, cost)
+        For multi-objective, return a dict of {config: (objective_name, cost)}
+
+        """
         ...
 
     def ask(self) -> Query:
+        """Ask the optimizer for a new config to evaluate"""
         ...
 
     def tell(self, result: Result) -> None:
+        """Tell the optimizer the result of the query"""
         ...
 
 
@@ -394,6 +403,21 @@ class GLUEReport:
 class GLUE:
     root: Path
 
+    def plot_incumbents(incumbents, max_budget) -> None:
+        """Plot the incumbent over time"""
+
+        budget = list(map(float, list(incumbents.keys())))
+        costs = list(map(float, list(incumbents.values())))
+        plt.figure()
+        plt.plot(budget, costs)
+        plt.scatter(budget, costs, marker="x", color="red")
+        plt.xlim(0, max_budget)
+        plt.xlabel("Budget")
+        plt.ylabel("Incumbent")
+        plt.title("Incumbent over time")
+        plt.show()
+
+
     def run(
         problem: ProblemStatement,
         optimizer: type[Optimizer],
@@ -411,7 +435,7 @@ class GLUE:
             GLUE.root / optimizer.name / benchmark.name / problem.name
         )
         opt = optimizer(ProblemStatement=problem, working_directory=optimizer_working_path)
-
+        incumbents = {}
 
         while (
             trial<budget
@@ -428,7 +452,11 @@ class GLUE:
             opt.tell(result)
             trial += 1
             logger.info(result.result)
-            logger.info(opt.get_incumbent())
+            # logger.info(opt.get_incumbent())
+            curr_incumbents = opt.get_incumbent()
+
+            if curr_incumbents[1] not in incumbents.values():
+                incumbents[trial] = curr_incumbents[1]
 
             print("-------------------------------\n")
 
@@ -444,6 +472,8 @@ class GLUE:
 
         history._save(report, save_dir)
         print(report)
+
+        GLUE.plot_incumbents(incumbents, max_budget=budget)
             
 
         return GLUEReport(optimizer.name, benchmark.name, history)

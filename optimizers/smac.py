@@ -1,12 +1,11 @@
 import os
-from ConfigSpace import ConfigurationSpace
-from typing import ClassVar, Any
+from ConfigSpace import ConfigurationSpace, Configuration
+from typing import ClassVar
 from pathlib import Path
 import random
 from hpo_glue.glu import Optimizer, Query, Result, Config, ProblemStatement
 from smac import (HyperparameterOptimizationFacade as HPOFacade, 
-                  MultiFidelityFacade as MFFacade, 
-                  HyperbandFacade as HBFacade, 
+                  MultiFidelityFacade as MFFacade,
                   Scenario)
 from smac.runhistory.dataclasses import TrialInfo, TrialValue
 
@@ -19,9 +18,9 @@ class SMAC_Optimizer(Optimizer):
         """ Create a SMAC Optimizer instance for a given problem statement """
         
         self.problem = ProblemStatement
-        self.config_space = ProblemStatement.config_space
-        self.fidelity_space = ProblemStatement.fidelity_space
-        self.objectives = ProblemStatement.result_keys
+        self.config_space: ConfigurationSpace = ProblemStatement.config_space
+        self.fidelity_space: list[int] | list[float] = ProblemStatement.fidelity_space
+        self.objectives: str | list[str] = ProblemStatement.result_keys
         self.seed = seed
         self.rng = random.Random(seed)
         self.smac_info : TrialInfo = None #No parallel support
@@ -56,8 +55,11 @@ class SMAC_Optimizer(Optimizer):
                          intensifier=self.intensifier,
                          overwrite=True)
         
-    def get_incumbent(self) -> Any:
-        return self.intensifier.get_incumbent()
+        self.best_cost = 0.0
+        
+    def get_incumbent(self) -> tuple[Configuration | list[Configuration], 
+                                     float | list[float]]:
+        return self.intensifier.get_incumbent, self.best_cost
 
 
     def get_facade(self):
@@ -71,6 +73,7 @@ class SMAC_Optimizer(Optimizer):
         """ Ask SMAC for a new config to evaluate """
         
         self.smac_info = self.smac.ask()
+        config_id = self.intensifier.runhistory.get_config_id(self.smac_info.config) #For now using SMAC's own config_id
         config = self.smac_info.config.get_dictionary()
         fidelity = None
         if self.problem.fidelity_keys is None:
@@ -92,5 +95,13 @@ class SMAC_Optimizer(Optimizer):
         cost = result.result[self.objectives]   #Not considering Multifidelity for now
         if self.minimize is False:
             cost = 1.0 - cost
+        # if self.best_cost == [] or cost < self.best_cost[-1]:
+        #     self.best_cost.append(cost)
+        #     self.incumbents.append(self.smac_info.config)
+        # else:
+        #     self.best_cost.append(self.best_cost[-1])
+        #     self.incumbents.append(self.incumbents[-1])
+        if self.best_cost == 0.0 or cost < self.best_cost:
+            self.best_cost = cost
         self.smac_val = TrialValue(cost = cost, time = 0.0)
         self.smac.tell(self.smac_info, self.smac_val)

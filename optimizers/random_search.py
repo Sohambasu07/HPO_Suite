@@ -1,5 +1,5 @@
 from ConfigSpace import ConfigurationSpace, Configuration
-from typing import ClassVar, Any
+from typing import ClassVar
 from pathlib import Path
 from hpo_glue.glu import Optimizer, Query, Result, Config, ProblemStatement
 import random
@@ -14,11 +14,14 @@ class RandomSearch(Optimizer):
         """ Create a Random Search Optimizer instance for a given problem statement """
 
         self.problem = ProblemStatement
-        self.config_space = ProblemStatement.config_space
-        self.fidelity_space = ProblemStatement.fidelity_space
+        self.config_space: ConfigurationSpace = ProblemStatement.config_space
+        self.fidelity_space: list[int] | list[float] = ProblemStatement.fidelity_space
         self.objectives = ProblemStatement.result_keys
         self.seed = seed
+        self.best_cost = 0.0
+        self.incumbent = None
         self.rng = random.Random(seed)
+        self.minimize = self.problem.minimize
         
     def get_config(self, num_configs: int) -> Configuration | list[Configuration]:
         """ Sample a random config or a list of configs from the configuration space """
@@ -28,8 +31,11 @@ class RandomSearch(Optimizer):
         config = self.config_space.sample_configuration(num_configs)
         return config
     
-    def get_incumbent(self) -> Any:
-        return None
+    def get_incumbent(self) -> tuple[Configuration, float]:
+        print(type(self.incumbent))
+        return (Configuration(configuration_space=self.config_space, 
+                              values = self.incumbent),
+                self.best_cost)
     
     def ask(self,   
             config_id: str | None = None) -> Query:
@@ -53,5 +59,10 @@ class RandomSearch(Optimizer):
     
     def tell(self, result: Result) -> None:
         """ Tell the optimizer the result of the query """
-        
-        pass
+
+        cost = result.result[self.problem.result_keys]
+        if self.minimize is False:
+            cost = 1 - cost
+        if self.best_cost == 0.0 or cost < self.best_cost:
+            self.best_cost = cost
+            self.incumbent = result.query.config.values
