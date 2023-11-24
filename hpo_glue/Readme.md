@@ -1,6 +1,6 @@
 # HPO-GLUE Usage
 
-## Implementing an Optimizer
+## Adding a new Optimizer
 
 To implement an optimizer, you need to create a class that inherits from `Optimizer` in hpo_glue/glu.py and implements the `__init__()`, `ask()` and `tell()` methods.
 
@@ -11,11 +11,15 @@ Depending on the features supported, the Optimizer should set the following clas
 
 | Function | Description |
 | --- | --- |
-| `__init()__` | accept the `problem_statement` and `working_directory` arguments. |
+| `__init()__` | accepts the `problem_statement` and `working_directory` arguments. |
 | `ask()` | returns a `Query` object containing a `Config` and a `fidelity`. |
 | `tell()` | accepts a `Result` object. |
 
-## Implementing a new Benchmark
+
+
+
+## Adding a new Benchmark
+
 
 ### Tabular Benchmark
 
@@ -49,6 +53,13 @@ The `SurrogateBenchmark` class has the following data members that need to be se
 | `time_budget`| (*Optional*) An str denoting the column name containing the time budget for each Config |
 
 
+### get_benchmark()
+
+Import and add the benchmark to the `BENCHMARK_FACTORIES` dict in `hpo_glue/benchmarks/benchmarks.py`.
+
+
+
+
 ## Using GLUE
 
 `GLUE` is the main class that is used to run the HPO-GLUE package.\
@@ -78,6 +89,8 @@ To use `GLUE`, a `ProblemStatement` object needs to be created. This object cont
 | `fidelity_keys`| (*Optional*) An str or a list of str denoting the fidelity type to be used from the benchmark |
 | `minimize`| (*defaults to True*) A boolean or a list of boolean denoting whether the objective(s) should be minimized or maximized. |
 
+
+## Example Usage
 
 The following example shows the simplest way to use GLUE with the `SMAC` Optimizer and the `YAHPO-Gym LCBench` Surrogate Benchmark:
 
