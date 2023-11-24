@@ -52,7 +52,6 @@ def rs_yahpo(budget_type: str,
                           save_dir=save_dir,
                           seed=seed)
     
-    # Report the results
     logger.info("SMAC on Yahpo-Gym LCBench complete \n")
     return glu_report
     

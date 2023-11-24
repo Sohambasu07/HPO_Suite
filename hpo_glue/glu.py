@@ -189,9 +189,9 @@ class Optimizer(ABC):
 
     def __init__(
         self,
-        config_space: ConfigurationSpace | list[Config],
-        fidelity_space: ConfigurationSpace | list[int] | list[float] | None,
-    ) -> None:
+        problem_statement: ProblemStatement,
+        working_directory: Path,
+        seed: int | None) -> None:
         ...
 
     def ask(self) -> Query:
@@ -402,7 +402,6 @@ class SurrogateBenchmark(Benchmark):
         self.fidelity_space = fidelity_space
         self.query_function = query_function
         self.benchmark = benchmark
-
         self.time_budget = time_budget
 
     def query(self, query: Query) -> Result:
