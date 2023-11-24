@@ -8,7 +8,8 @@ from benchmarks.benchmarks import get_benchmark
 import argparse
 
 
-def rs_yahpo(n_trials: int, 
+def rs_yahpo(budget_type: str,
+             budget: int,
              benchmark_name: str, 
              task_id: str,
              seed: int, 
@@ -39,15 +40,15 @@ def rs_yahpo(n_trials: int,
         config_space = benchmark.config_space,
         fidelity_space = benchmark.fidelity_space,
         result_keys = "test_cross_entropy",
+        budget_type = budget_type,
+        budget = budget,
         minimize = True,
-        n_trials = n_trials,
     )
 
     # Run the optimizer on the benchmark using GLUE
-    glu_report = GLUE.run(problem=ps,
+    glu_report = GLUE.run(problem_statement=ps,
                           optimizer=optimizer, 
-                          benchmark=benchmark, 
-                          budget=n_trials,
+                          benchmark=benchmark,
                           save_dir=save_dir,
                           seed=seed)
     
@@ -59,7 +60,9 @@ def rs_yahpo(n_trials: int,
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Perform HPO using Random "
                                      "Search on Yahpo-Gym LCBench Benchmark")
-    parser.add_argument("--n_trials", type=int, default=1)
+    
+    parser.add_argument("--budget_type", type=str, default="n_trials")
+    parser.add_argument("--budget", type=int, default=1)
     parser.add_argument("--benchmark_name", type=str, default="lcbench")
     parser.add_argument("--task_id", type=str, default="167184")
     parser.add_argument("--seed", type=int, default=None)
@@ -67,7 +70,8 @@ if __name__ == "__main__":
     parser.add_argument("--save_dir", type=str, default=Path("./results"))
     args = parser.parse_args()
 
-    report = rs_yahpo(args.n_trials, 
+    report = rs_yahpo(args.budget_type,
+                      args.budget,  
                       args.benchmark_name,
                       args.task_id,
                       args.seed, 

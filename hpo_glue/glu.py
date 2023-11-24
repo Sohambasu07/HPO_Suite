@@ -430,7 +430,7 @@ class GLUEReport:
 
 
 class GLUE:
-    root: Path
+    root: Path = Path("./")
 
     def run(problem_statement: ProblemStatement,
         optimizer: type[Optimizer],
