@@ -2,13 +2,12 @@ from __future__ import annotations  # Makes things like `dict[str, Any]` work
 
 from abc import ABC
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, ClassVar
 from ConfigSpace import ConfigurationSpace, Configuration
 import pandas as pd
 import os
 import datetime
-import matplotlib.pyplot as plt
-
+import time
 import logging
 
 logger = logging.getLogger(__name__)
@@ -85,11 +84,11 @@ class History:
         hist_df = pd.DataFrame(report, columns=columns)
         return hist_df
 
-    def _save(self, report: pd.DataFrame, savedir: Path) -> None:
+    def _save(self, report: pd.DataFrame, savedir: Path, prob_name: str) -> None:
         """ Save the history of the run """
         if os.path.exists(savedir) is False:
             os.mkdir(savedir)
-        filename = "report" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + ".csv"
+        filename = "report_" + prob_name + datetime.datetime.now().strftime("%Y%m%d_%H%M%S") + ".csv"
         report.to_csv(savedir / filename, mode='a', header=True, index=False)
 
 
@@ -105,8 +104,9 @@ class ProblemStatement:
     *  ConfigurationSpace -> surrogate
     """
 
-    fidelity_space: ConfigurationSpace | list[int] | list[float]
+    fidelity_space: ConfigurationSpace | list[int] | list[float] | None
     """The space of fidelities for Multifidelity/ Manyfidelity Optimization"""
+
 
     result_keys: str | list[str]
     """The key(s) in the result that we want to consider as the objective value
@@ -114,6 +114,15 @@ class ProblemStatement:
     * str -> single objective
     * list[str] -> multi-objective
     """
+
+    budget_type: str
+    """The type of budget to use for the optimizer.
+    Currently supported: ["n_trials", "time_budget", "fidelity_budget"]"""
+
+
+    budget: int
+    """The budget to run the optimizer for"""
+
 
     fidelity_keys: str | list[str] | None
     """The key(s) in the result that we want to consider as the fidelity
@@ -126,27 +135,25 @@ class ProblemStatement:
     minimize: bool | list[bool]
     """Whether to minimize or maximize the objective value. One per objective"""
 
-    n_trials: int
-    """The number of trials to run the optimizer for"""
-
     def __init__(
         self,
         name: str,
         config_space: ConfigurationSpace | list[Config],
-        fidelity_space: ConfigurationSpace | list[int] | list[float],
+        fidelity_space: ConfigurationSpace | list[int] | list[float] | None,
         result_keys: str | list[str],
+        budget_type: str,
+        budget: int,
         fidelity_keys: str | list[str] | None = None,
         minimize: bool | list[bool] = True,
-        n_trials: int = 1,
     ) -> None:
-        cls = self.__class__
-        cls.name = name
-        cls.config_space = config_space
-        cls.fidelity_space = fidelity_space
-        cls.result_keys = result_keys
-        cls.fidelity_keys = fidelity_keys
-        cls.minimize = minimize
-        cls.n_trials = n_trials
+        self.name = name
+        self.config_space = config_space
+        self.fidelity_space = fidelity_space
+        self.result_keys = result_keys
+        self.budget_type = budget_type
+        self.budget = budget
+        self.fidelity_keys = fidelity_keys
+        self.minimize = minimize
 
     # TODO: Will also need to define some criteria for stopping the optimization.
     # Easiest example is n_trials but more difficult to define is "fidelity_budget"
@@ -164,7 +171,7 @@ class ProblemStatement:
 
     @property
     def is_multifidelity(self) -> bool:
-        return isinstance(self.fidelity_keys, str)
+        return self.fidelity_space is not None
 
     @property
     def is_manyfidelity(self) -> bool:
@@ -174,20 +181,17 @@ class ProblemStatement:
 class Optimizer(ABC):
     """ Defines the common interface for Optimizers """
 
+    name: ClassVar[str]
+    supports_manyfidelity: ClassVar[bool] = False
+    supports_multifidelity: ClassVar[bool] = False
+    supports_multiobjective: ClassVar[bool] = False
+    supports_tabular: ClassVar[bool] = False
+
     def __init__(
         self,
         config_space: ConfigurationSpace | list[Config],
-        fidelity_space: ConfigurationSpace | list[int] | list[float],
+        fidelity_space: ConfigurationSpace | list[int] | list[float] | None,
     ) -> None:
-        ...
-
-    def get_incumbent(self) -> tuple[Any, float | dict[Any, tuple[str, float]]]:
-        """Return the incumbent config and its objective value(s)
-
-        For single objective, return a tuple of (config, cost)
-        For multi-objective, return a dict of {config: (objective_name, cost)}
-
-        """
         ...
 
     def ask(self) -> Query:
@@ -219,8 +223,15 @@ class TabularBenchmark(Benchmark):
     config_space: list[Config]  
     """ All possible configs for the benchmark """
 
-    fidelity_space: list[int] | list[float]  
+    fidelity_space: list[int] | list[float] | None 
     """ All possible fidelities for the benchmark """
+
+    time_budget: str | None = None
+    """ Time budget support:
+            str: time budget key
+            None: time budget not supported
+    """
+
 
     def __init__(
         self,
@@ -229,10 +240,9 @@ class TabularBenchmark(Benchmark):
         id_key: str,
         config_keys: list[str],
         result_keys: list[str],
-        fidelity_key: str | list[str] | None = None,
+        fidelity_keys: str | list[str] | None = None,
         remove_constants: bool = False,
-        space: ConfigurationSpace | None = None,
-        seed: int | None = None,
+        time_budget: str | None = None,
     ) -> None:
         
 
@@ -243,8 +253,8 @@ class TabularBenchmark(Benchmark):
         if id_key not in table.columns:
             raise ValueError(f"'{id_key=}' not in columns {table.columns}")
 
-        if fidelity_key not in table.columns:
-            raise ValueError(f"'{fidelity_key=}' not in columns {table.columns}")
+        if fidelity_keys not in table.columns:
+            raise ValueError(f"'{fidelity_keys=}' not in columns {table.columns}")
 
         if not all(key in table.columns for key in result_keys):
             raise ValueError(f"{result_keys=} not in columns {table.columns}")
@@ -276,7 +286,7 @@ class TabularBenchmark(Benchmark):
         table = table.rename(columns={id_key: "id"})
 
         # Index the table
-        index_cols: list[str] = ["id", fidelity_key]
+        index_cols: list[str] = ["id", fidelity_keys]
 
         # Drop all the columns that are not relevant
         relevant_cols: list[str] = [
@@ -298,19 +308,16 @@ class TabularBenchmark(Benchmark):
         #               2    |
         #   ...
 
-        # Create the configuration space
-        if space is None:
-            space = ConfigurationSpace(name, seed=seed)
-
-
         self.name = name
         self.table = table
         self.id_key = id_key
-        self.fidelity_key = fidelity_key
+        self.fidelity_keys = fidelity_keys
         self.config_keys = sorted(config_keys)
         self.result_keys = sorted(result_keys)
         self.config_space = self._get_all_configs()
         self.fidelity_space, self.fidelity_range = self._get_all_fidelities()
+        
+        self.time_budget = time_budget
         
 
     def query(self, query: Query) -> Result:
@@ -343,16 +350,15 @@ class TabularBenchmark(Benchmark):
         """Get all possible fidelities for the benchmark"""
 
         # Make sure we have equidistance fidelities for all configs
-        fidelity_values = self.table.index.get_level_values(self.fidelity_key)
+        fidelity_values = self.table.index.get_level_values(self.fidelity_keys)
         fidelity_counts = fidelity_values.value_counts()
         if not (fidelity_counts == fidelity_counts.iloc[0]).all():
-            raise ValueError(f"{self.fidelity_key=} not uniform. \n{fidelity_counts}")
+            raise ValueError(f"{self.fidelity_keys=} not uniform. \n{fidelity_counts}")
 
 
         sorted_fids = sorted(fidelity_values.unique())
         start = sorted_fids[0]
         end = sorted_fids[-1]
-        step = sorted_fids[1] - sorted_fids[0]
 
         # Here we get all the unique configs
         #     id    fidelity | **metric, **config_values
@@ -360,23 +366,44 @@ class TabularBenchmark(Benchmark):
         #     1         0    |
         #   ...
 
-        return sorted_fids, (start, end, step)
+        return sorted_fids, (start, end)
     
 
 class SurrogateBenchmark(Benchmark):
+    """Defines the interface for a surrogate benchmark."""
+
+    config_space: ConfigurationSpace
+    """ The configuration space for the benchmark """
+
+    fidelity_space: list[int] | list[float] | None
+    """ All possible fidelities for the benchmark """
+
+    query_function: Callable[[Query], Result]
+    """ The function to query the benchmark """
+
+    time_budget: str | None = None
+    """ Time budget support:
+            str: time budget key
+            None: time budget not supported
+    """
+
+
     def __init__(
         self,
         name: str,
         config_space: ConfigurationSpace,
-        fidelity_space: list[int] | list[float],
+        fidelity_space: list[int] | list[float] | None,
         query_function: Callable[[Query], Result],
-        benchmark
+        benchmark: Any,
+        time_budget: str | None = None,
     ) -> None:
         self.name = name
         self.config_space = config_space
         self.fidelity_space = fidelity_space
         self.query_function = query_function
         self.benchmark = benchmark
+
+        self.time_budget = time_budget
 
     def query(self, query: Query) -> Result:
          result = self.query_function(self.benchmark, query)
@@ -386,79 +413,105 @@ class SurrogateBenchmark(Benchmark):
 class GLUEReport:
     optimizer_name: str
     benchmark_name: str
-    # problem_statement: ProblemStatement
-    history: list[Result]
+    problem_statement: ProblemStatement
+    history: pd.DataFrame
 
     def __init__(
         self, 
         optimizer_name: str, 
         benchmark_name: str, 
-        history: list[Result]
+        problem_statement: ProblemStatement,
+        history: pd.DataFrame,
     ) -> None:
         self.optimizer_name = optimizer_name
         self.benchmark_name = benchmark_name
+        self.problem_statement = problem_statement
         self.history = history
 
 
 class GLUE:
     root: Path
 
-    def plot_incumbents(incumbents, max_budget) -> None:
-        """Plot the incumbent over time"""
-
-        budget = list(map(float, list(incumbents.keys())))
-        costs = list(map(float, list(incumbents.values())))
-        plt.figure()
-        plt.plot(budget, costs)
-        plt.scatter(budget, costs, marker="x", color="red")
-        plt.xlim(0, max_budget)
-        plt.xlabel("Budget")
-        plt.ylabel("Incumbent")
-        plt.title("Incumbent over time")
-        plt.show()
-
-
-    def run(
-        problem: ProblemStatement,
+    def run(problem_statement: ProblemStatement,
         optimizer: type[Optimizer],
         benchmark: Benchmark,
-        budget: int, # number of trials
         save_dir: Path,
         seed: int | None = None,
     ) -> GLUEReport:
         """Runs an optimizer on a benchmark, returning a report."""
-        trial = 0
+
+        GLUE.sanity_checks(problem_statement, 
+                           optimizer, 
+                           benchmark)
+
+
+        budget_num = 0
         history = History()
-        GLUE.root = Path('./')
 
         optimizer_working_path = (
-            GLUE.root / optimizer.name / benchmark.name / problem.name
+            GLUE.root / optimizer.name / benchmark.name / problem_statement.name
         )
-        opt = optimizer(ProblemStatement=problem, working_directory=optimizer_working_path)
-        incumbents = {}
+        opt = optimizer(problem_statement=problem_statement, 
+                        working_directory=optimizer_working_path, 
+                        seed=seed)
 
-        while (
-            trial<budget
-        ):  # e.g. n_trials, duration, etc...
+        budget_type = problem_statement.budget_type
+        budget = problem_statement.budget
+        check = True
+
+        if budget_type == "time_budget":
+            logger.warning("Time budget is NOT yet fully functional. Unexpected results may occur!")
+            time.sleep(2)
+
+        logger.info(f"Running Problem Statement: {problem_statement.name}")
+
+        while(check):  
+            # e.g. n_trials, duration, etc...
             # TODO: Here we will definitely need some more complex logic once we consider things
             # such as n_workers > 1, contunuing from a checkpoint, etc...
             # Ignore these for now, just specifying that this is likely where this kind of logic
             # would get executed.
-            logger.info(f"Trial {trial}\n")
-            print("-------------------------------")
-            config = opt.ask(config_id=str(trial))
+
+
+            # TODO: Remove config as argument
+            config = opt.ask(config_id=str(budget_num)) 
             result = benchmark.query(config)
-            history.add(result)
             opt.tell(result)
-            trial += 1
-            logger.info(result.result)
-            # logger.info(opt.get_incumbent())
-            curr_incumbents = opt.get_incumbent()
 
-            if curr_incumbents[1] not in incumbents.values():
-                incumbents[trial] = curr_incumbents[1]
 
+            if budget_type == "time_budget":
+                budget_num += result.result[benchmark.time_budget]
+            
+            # Does not account for manyfidelity
+            elif budget_type == "fidelity_budget": 
+                if problem_statement.fidelity_space is not None:
+                    budget_num += result.query.fidelity
+                else:
+                    budget_num += benchmark.fidelity_space[-1]
+
+            check = budget_num < budget
+
+            print(budget_num, budget, check)
+
+            if budget_type == "n_trials":
+                budget_num += 1
+            
+
+            if check is False:
+                print("Budget exhausted!")
+                break       #TODO: Doesn't work when using SMAC
+
+            
+            # Print the results
+            logger.info(f"Budget No. {budget_num}\n")
+            print("-------------------------------")
+
+            history.add(result)
+            logger.info(result.result) 
+            
             print("-------------------------------\n")
+
+
 
         cols = (
             ["Config id", "Fidelity"]
@@ -466,14 +519,35 @@ class GLUE:
             + list(result.result.keys())
         )
 
-        report = history.df(cols)
-        report["Optimizer Name"] = optimizer.name
-        report["Benchmark Name"] = benchmark.name
+        hist = history.df(cols)
+        hist["Optimizer Name"] = optimizer.name
+        hist["Benchmark Name"] = benchmark.name
 
-        history._save(report, save_dir)
-        print(report)
-
-        GLUE.plot_incumbents(incumbents, max_budget=budget)
+        history._save(hist, save_dir, problem_statement.name)
+        print(hist)
+        print(hist["Fidelity"].value_counts())
             
 
-        return GLUEReport(optimizer.name, benchmark.name, history)
+        return GLUEReport(optimizer.name, benchmark.name, problem_statement, hist)
+        
+
+    def sanity_checks(problem_statement: ProblemStatement,
+                      optimizer: Optimizer,
+                      benchmark: Benchmark) -> None:
+        """Check if the problem statement, optimizer and benchmark are compatible"""
+
+        if problem_statement.is_manyfidelity:
+            raise NotImplementedError("Manyfidelity is not yet implemented")
+        
+        if problem_statement.is_tabular and not optimizer.supports_tabular:
+            raise ValueError(f"{optimizer.name} does not support tabular benchmarks")
+        
+        if problem_statement.budget_type == "time_budget" and benchmark.time_budget is None:
+            raise ValueError("Benchmark does not support time budgets!")
+        
+        if problem_statement.budget_type != "time_budget" and problem_statement.budget < 1:
+            raise ValueError("Budget must be greater than or equal to 1!")
+
+        if (problem_statement.budget_type == "fidelity_budget" 
+            and problem_statement.budget < benchmark.fidelity_space[-1]):
+            raise ValueError("Budget must be greater than or equal to the max fidelity of the benchmark!")

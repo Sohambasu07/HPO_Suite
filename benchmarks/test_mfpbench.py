@@ -20,9 +20,11 @@ def test_mfpbench(data_dir: Path,
 
     else:
         config = bench.sample()
-        print(bench.query(config, at=fidelity))
+        print(bench.query(config, at=fidelity).dict())
         print(bench.space)
-        print(bench.fidelity_range)
+        fid_range = bench.fidelity_range
+        fidelity_space = list(range(fid_range[0], fid_range[1] + 1, fid_range[2]))
+        print(type(fidelity_space[0]))
 
 
 if __name__ == "__main__":

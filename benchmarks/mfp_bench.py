@@ -6,15 +6,17 @@ from hpo_glue.glu import TabularBenchmark, SurrogateBenchmark, Query
 
 def lcbench_tabular(task_id: str, datadir: Path) -> TabularBenchmark:
 
+    datadir = datadir / "lcbench-tabular"
     table = mfpbench.get("lcbench_tabular", task_id=task_id, datadir=datadir)
     table_for_task = table.table
     return TabularBenchmark(
-        name=f"lcbench_tabular_{task_id}",
-        table=table_for_task,
-        id_key="id",  # Key in the table to uniquely identify tasks
-        config_keys=table.config_keys,  # Keys in the table that correspond to configs
-        result_keys=table.result_keys,  # Key in the table that corresponds to the result
-        fidelity_key=table.fidelity_key,  # Key in the table that corresponds to the fidelity (e.g. "epoch")
+        name = f"lcbench_tabular_{task_id}",
+        table = table_for_task,
+        id_key = "id",  # Key in the table to uniquely identify tasks
+        config_keys = table.config_keys,  # Keys in the table that correspond to configs
+        result_keys = table.result_keys,  # Key in the table that corresponds to the result
+        fidelity_keys = table.fidelity_key,  # Key in the table that corresponds to the fidelity (e.g. "epoch")
+        time_budget = "time",  # Time budget key
     )
 
 def yahpo_surrogate_benchmark(benchmark_name: str, task_id: str, datadir: Path) -> SurrogateBenchmark:
@@ -25,20 +27,11 @@ def yahpo_surrogate_benchmark(benchmark_name: str, task_id: str, datadir: Path) 
     return SurrogateBenchmark(
         name="yahpo" + "_" + benchmark_name + "_" + task_id,
         config_space = bench.space,
-        fidelity_space=fidelity_space,
-        query_function=yahpo_query_function,
-        benchmark=bench,
+        fidelity_space = fidelity_space,
+        query_function = yahpo_query_function,
+        benchmark = bench,
+        time_budget = "time"
     )
-
-# class YahpoSurrogateQuerier:
-
-#     def __call__(self, query: Query) -> Result:
-#         config = massage_into_yahpo_format(query.config)
-#         fidelity = also_massage_into_yahpo_format(query.fidelity)
-
-#         # Get some arbitrary thing out of this surrogate
-#         result_dict = self.yahpo_benchmark.get_result(config, fidelity)
-#         return Result(query=query, result=result_dict)
 
 def yahpo_query_function(benchmark, query: Query):
     q = benchmark.query(query.config.values, at=query.fidelity)
