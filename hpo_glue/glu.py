@@ -13,10 +13,11 @@ import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+
 class Config:
     id: str  
     """ Some unique identifier """
-    
+
     values: dict[str, Any]  
     """ The actual config values to evaluate """
 
@@ -71,7 +72,7 @@ class History:
         """Return the history as a pandas DataFrame"""
 
         report = []
-        
+
         for res in self.results:
             config = res.query.config.values
             id = res.query.config.id
@@ -213,7 +214,6 @@ class Benchmark(ABC):
         ...
 
 
-
 class TabularBenchmark(Benchmark):
     """Defines the interface for a tabular benchmark."""
 
@@ -244,7 +244,6 @@ class TabularBenchmark(Benchmark):
         remove_constants: bool = False,
         time_budget: str | None = None,
     ) -> None:
-        
 
         # Make sure we work with a clean slate, no issue with index.
         table = table.reset_index()
@@ -316,9 +315,8 @@ class TabularBenchmark(Benchmark):
         self.result_keys = sorted(result_keys)
         self.config_space = self._get_all_configs()
         self.fidelity_space, self.fidelity_range = self._get_all_fidelities()
-        
+
         self.time_budget = time_budget
-        
 
     def query(self, query: Query) -> Result:
         """Query the benchmark for a result"""
@@ -331,7 +329,7 @@ class TabularBenchmark(Benchmark):
         result = self.table.loc[(query.config.id, at)]
         result = result.get(self.result_keys).to_dict()
         return Result(query, result)
-    
+
     def _get_all_configs(self) -> None:
         """Get all possible configs for the benchmark"""
 
@@ -387,7 +385,6 @@ class SurrogateBenchmark(Benchmark):
             None: time budget not supported
     """
 
-
     def __init__(
         self,
         name: str,
@@ -405,8 +402,8 @@ class SurrogateBenchmark(Benchmark):
         self.time_budget = time_budget
 
     def query(self, query: Query) -> Result:
-         result = self.query_function(self.benchmark, query)
-         return Result(query, result)
+        result = self.query_function(self.benchmark, query)
+        return Result(query, result)
 
 
 class GLUEReport:
@@ -494,23 +491,20 @@ class GLUE:
 
             if budget_type == "n_trials":
                 budget_num += 1
-            
+
 
             if check is False:
                 print("Budget exhausted!")
                 break       #TODO: Doesn't work when using SMAC
 
-            
             # Print the results
             logger.info(f"Budget No. {budget_num}\n")
             print("-------------------------------")
 
             history.add(result)
             logger.info(result.result) 
-            
+           
             print("-------------------------------\n")
-
-
 
         cols = (
             ["Config id", "Fidelity"]
@@ -525,25 +519,25 @@ class GLUE:
         history._save(hist, save_dir, problem_statement.name)
         print(hist)
         print(hist["Fidelity"].value_counts())
-            
 
         return GLUEReport(optimizer.name, benchmark.name, problem_statement, hist)
-        
+   
 
-    def sanity_checks(problem_statement: ProblemStatement,
-                      optimizer: Optimizer,
-                      benchmark: Benchmark) -> None:
+    def sanity_checks(
+        optimizer: Optimizer,
+        benchmark: Benchmark
+    ) -> None:
         """Check if the problem statement, optimizer and benchmark are compatible"""
 
         if problem_statement.is_manyfidelity:
             raise NotImplementedError("Manyfidelity is not yet implemented")
-        
+
         if problem_statement.is_tabular and not optimizer.supports_tabular:
             raise ValueError(f"{optimizer.name} does not support tabular benchmarks")
-        
+
         if problem_statement.budget_type == "time_budget" and benchmark.time_budget is None:
             raise ValueError("Benchmark does not support time budgets!")
-        
+
         if problem_statement.budget_type != "time_budget" and problem_statement.budget < 1:
             raise ValueError("Budget must be greater than or equal to 1!")
 

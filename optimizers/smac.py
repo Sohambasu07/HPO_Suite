@@ -2,20 +2,24 @@ import os
 from ConfigSpace import ConfigurationSpace
 from pathlib import Path
 from hpo_glue.glu import Optimizer, Query, Result, Config, ProblemStatement
-from smac import (HyperparameterOptimizationFacade as HPOFacade, 
-                  MultiFidelityFacade as MFFacade,
-                  Scenario)
+from smac import (
+    HyperparameterOptimizationFacade as HPOFacade, 
+    MultiFidelityFacade as MFFacade,
+    Scenario
+)
 from smac.runhistory.dataclasses import TrialInfo, TrialValue
+
 
 class SMAC_Optimizer(Optimizer):
     name = "SMAC"
     supports_multifidelity = True
 
-
-    def __init__(self,
-                 problem_statement: ProblemStatement,
-                 working_directory: Path,
-                 seed: int | None = None):
+    def __init__(
+        self,
+        problem_statement: ProblemStatement,
+        working_directory: Path,
+        seed: int | None = None
+    ):
         """ Create a SMAC Optimizer instance for a given problem statement """
 
         if isinstance(problem_statement.result_keys, list):
@@ -33,7 +37,6 @@ class SMAC_Optimizer(Optimizer):
         self.seed = seed
         self.smac_info : TrialInfo | None = None #No parallel support
         self.smac_val : TrialValue | None = None #No parallel support
-
 
         if os.path.exists(working_directory) is False:
             os.makedirs(working_directory)
@@ -98,7 +101,7 @@ class SMAC_Optimizer(Optimizer):
         if self.smac_info.budget is not None:
             fidelity = budget
 
-        _config_id = self.intensifier.runhistory.config_ids[config] #For now using SMAC's own config_id
+        _config_id = self.intensifier.runhistory.config_ids[config]  #For now using SMAC's own config_id
 
         config = Config(
             id=f"{_config_id=}_{seed=}_{instance=}",
