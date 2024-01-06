@@ -1,0 +1,9 @@
+dependencies = [
+    "pandas>=2,<3",
+    "matplotlib>=3,<4",
+    "yahpo-gym==1.0.1",
+    "optuna>=3,<4",
+    "smac",
+]
+
+requires-python = ">=3.10"
