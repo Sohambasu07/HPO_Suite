@@ -1,7 +1,7 @@
 import os
 from ConfigSpace import ConfigurationSpace, Configuration
 from pathlib import Path
-from hpo_glue.glu import Optimizer, Query, Result, Config, ProblemStatement
+from hpo_glue.glu import Optimizer, Query, Result, Config, Problem
 import random
 
 class RandomSearch(Optimizer):
@@ -10,25 +10,27 @@ class RandomSearch(Optimizer):
     supports_tabular = True
 
     def __init__(self, 
-                 problem_statement: ProblemStatement,
+                 problem: Problem,
                  working_directory: Path,
                  seed: int | None = None):
         """ Create a Random Search Optimizer instance for a given problem statement """
 
-        if isinstance(problem_statement.result_keys, list):
+        if isinstance(problem.objectives, list):
             raise NotImplementedError("# TODO: Implement multiobjective for RandomSearch")
+        
+        if isinstance(problem.fidelities, list):
+            raise NotImplementedError("# TODO: Manyfidelity not yet implemented for RandomSearch!")
 
-        self.problem_statement = problem_statement
-        self.config_space: ConfigurationSpace = self.problem_statement.config_space
-        self.fidelity_space: list[int] | list[float] = self.problem_statement.fidelity_space
-        self.objectives = self.problem_statement.result_keys
+        self.problem = problem
+        self.config_space: ConfigurationSpace = self.problem.problem_statement.benchmark.config_space
+        self.fidelity_space: list[int] | list[float] = self.problem.problem_statement.benchmark.fidelity_space
+        self.objectives = self.problem.objectives
         self.seed = seed
         self.rng = random.Random(seed)
-        self.minimize = self.problem_statement.minimize
-        self.is_multifidelity = self.problem_statement.is_multifidelity
-        self.is_manyfidelity = self.problem_statement.is_manyfidelity
-        self.is_tabular = self.problem_statement.is_tabular
-        self.is_multiobjective = self.problem_statement.is_multiobjective
+        self.minimize = self.problem.minimize
+        self.is_manyfidelity = self.problem.is_manyfidelity
+        self.is_tabular = self.problem.is_tabular
+        self.is_multiobjective = self.problem.is_multiobjective
 
         if os.path.exists(working_directory) is False:
             os.makedirs(working_directory)
@@ -48,8 +50,7 @@ class RandomSearch(Optimizer):
 
         fidelity = None
         # Randomly sampling from fidelity space for multifidelity
-        if self.is_multifidelity:
-            fidelity = self.rng.choice(self.fidelity_space)
+        fidelity = self.rng.choice(self.fidelity_space)
 
         # We are dealing with a tabular benchmark
         if self.is_tabular:
@@ -68,6 +69,6 @@ class RandomSearch(Optimizer):
     def tell(self, result: Result) -> None:
         """ Tell the optimizer the result of the query """
 
-        cost = result.result[self.problem_statement.result_keys]
+        cost = result.result[self.problem.objectives]
         if self.minimize is False:
             cost = -cost
