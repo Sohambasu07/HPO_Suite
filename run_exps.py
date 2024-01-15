@@ -67,9 +67,10 @@ def run_exps(budget_type: str,
                 optimizer = optimizer,
                 benchmark = benchmark
             ):
-                problem_statement = ProblemStatement(
+                problem_statement = ProblemStatement( #add Opt HPs here
                     optimizer = optimizer,
-                    benchmark = benchmark
+                    benchmark = benchmark,
+                    hyperparameters = optimizer_kwargs.get(optimizer.name)
                 )
 
                 problem = Problem(
@@ -78,7 +79,7 @@ def run_exps(budget_type: str,
                     minimize = benchmark.minimize_default
                 )
 
-                if isinstance(benchmark.fidelity_keys, list):
+                if isinstance(benchmark.fidelity_keys, list): # put inside constructor 
                     problem.fidelities = benchmark.fidelity_keys[0]
                 else:
                     problem.fidelities = benchmark.fidelity_keys
@@ -98,7 +99,7 @@ def run_exps(budget_type: str,
     # Creating an Experiment
 
     exp = Experiment(
-        run = run,
+        runs = [run],
         n_workers = num_workers
     )
 
@@ -107,7 +108,6 @@ def run_exps(budget_type: str,
     GLUE.experiment(
         experiment = exp,
         save_dir = save_dir,
-        optimizer_kwargs = optimizer_kwargs
     )
     
     # for report in glu_report:
