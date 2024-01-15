@@ -107,17 +107,23 @@ class ProblemStatement:
     benchmark: Benchmark
     """The benchmark to use for this problem statement"""
 
+    hyperparameters: dict[str, Any]
+    """The hyperparameters to use for the optimizer"""
+
 
     def __init__(
         self,
         optimizer: Optimizer,
-        benchmark: Benchmark
-        
+        benchmark: Benchmark,
+        hyperparameters: dict[str, Any] = {},
     ) -> None:
         
         self.name = f"{optimizer.name}_{benchmark.name}"
         self.optimizer = optimizer
         self.benchmark = benchmark
+        self.hyperparameters = hyperparameters
+        if self.hyperparameters is None:
+            self.hyperparameters = {}
 
 
 class Problem:
@@ -216,8 +222,8 @@ class Run:
 
 class Experiment:
 
-    run: Run
-    """The Run inside the Experiment"""
+    runs: list[Run]
+    """The list of Runs inside the Experiment"""
 
     n_workers: int | None
     """The number of workers to use for the Problem Runs"""
@@ -225,10 +231,10 @@ class Experiment:
 
     def __init__(
         self,
-        run,
+        runs,
         n_workers = 1
     ) -> None:
-        self.run = run
+        self.runs = runs
         self.n_workers = n_workers
 
 
@@ -393,7 +399,10 @@ class TabularBenchmark(Benchmark):
         self.default_objective = default_objective
         self.minimize_default = minimize_default
         self.config_space = self._get_all_configs()
-        self.fidelity_space, self.fidelity_range = self._get_all_fidelities()
+        self.fidelity_space = None
+        self.fidelity_range = None
+        if self.fidelity_keys is not None:
+            self.fidelity_space, self.fidelity_range = self._get_all_fidelities()
 
         self.time_budget = time_budget
 
@@ -489,10 +498,10 @@ class SurrogateBenchmark(Benchmark):
         result_keys: list[str],
         default_objective: str | None,
         minimize_default: bool,
-        fidelity_space: list[int] | list[float] | None,
         query_function: Callable[[Query], Result],
         benchmark: Any,
         fidelity_keys: str | list[str] | None = None,
+        fidelity_space: list[int] | list[float] | None = None,
         time_budget: str | None = None,
     ) -> None:
         self.name = name
@@ -537,8 +546,7 @@ class GLUE:
         save_dir: Path,
         budget_type: str,
         budget: int,
-        seed: int | None = None,
-        **kwargs
+        seed: int | None = None
     ) -> GLUEReport:
         """Runs an optimizer on a benchmark, returning a report."""
 
@@ -555,7 +563,8 @@ class GLUE:
         opt = optimizer(problem = problem, 
                         working_directory = optimizer_working_path, 
                         seed = seed,
-                        **kwargs)
+                        **problem.problem_statement.hyperparameters
+                        )
 
         check = True
 
@@ -563,9 +572,15 @@ class GLUE:
             logger.warning("Time budget is NOT yet fully functional. Unexpected results may occur!")
             time.sleep(2)
 
-        if budget_type == "fidelity_budget":
+        elif budget_type == "fidelity_budget":
             logger.warning("Plotting may not be as expected with Fidelity budget!")
             time.sleep(2)
+
+        elif budget_type == "n_trials":
+            time.sleep(2)
+
+        else:
+            raise ValueError(f"Budget type {budget_type} not supported!")
 
         logger.info(f"Running Problem: {problem.problem_statement.name}, budget: {budget}, "
                     f"budget_type: {budget_type}, seed: {seed}\n")
@@ -583,8 +598,10 @@ class GLUE:
             result = benchmark.query(config)
             opt.tell(result)
 
+            if budget_type == "n_trials":
+                budget_num += 1
 
-            if budget_type == "time_budget":
+            elif budget_type == "time_budget":
                 budget_num += result.result[benchmark.time_budget]
             
             # Does not account for manyfidelity
@@ -594,13 +611,9 @@ class GLUE:
                 else:
                     budget_num += benchmark.fidelity_space[-1]
 
-            check = budget_num < budget
+            check = budget_num <= budget if budget_type == "n_trials" else budget_num < budget
 
             print(budget_num, budget, check)
-
-            if budget_type == "n_trials":
-                budget_num += 1
-
 
             if check is False:
                 print("Budget exhausted!")
@@ -634,24 +647,18 @@ class GLUE:
     def experiment(
         experiment: Experiment,
         save_dir: Path,
-        optimizer_kwargs: dict[str, Any] | None = None,
     ):
         """Runs an experiment, returning a report."""
 
-        for problem in experiment.run.problems:
-            opt_kwarg_dict = optimizer_kwargs.get(problem.problem_statement.optimizer.name)
-            if opt_kwarg_dict is None:
-                opt_kwarg_dict = {}
-            print(problem.problem_statement.optimizer.name)
-            print(opt_kwarg_dict)
-            _ = GLUE.run(
-                problem = problem,
-                save_dir = save_dir,
-                budget_type = experiment.run.budget_type,
-                budget = experiment.run.budget,
-                seed = experiment.run.seed,
-                **opt_kwarg_dict
-            )
+        for run in experiment.runs:
+            for problem in run.problems:
+                _ = GLUE.run(
+                    problem = problem,
+                    save_dir = save_dir,
+                    budget_type = run.budget_type,
+                    budget = run.budget,
+                    seed = run.seed,
+                    )
 
 
     def sanity_checks(
@@ -668,13 +675,16 @@ class GLUE:
 
             return False
         
-        # elif optimizer.supports_multifidelity and benchmark.fidelity_keys is None:
-        #     logger.error(
-        #         f"{optimizer.name} supports multifidelity benchmarks! "
-        #         f"{optimizer.name} and {benchmark.name} are not compatible."
-        #     )
+        elif optimizer.supports_multifidelity and benchmark.fidelity_keys is None:
+            # TODO: Implement this properly. Not really working right now since non-MF samples
+            #       at the maximum fidelity from benchmark.fidelity_space
+            logger.error(  
+                f"{optimizer.name} supports multifidelity benchmarks but"
+                f"{benchmark.name} does not have fidelity keys! "
+                f"{optimizer.name} and {benchmark.name} are not compatible."
+            )
 
-        #     return False
+            return False
         
         return True
 
