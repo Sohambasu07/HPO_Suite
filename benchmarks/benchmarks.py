@@ -25,3 +25,11 @@ def get_all_benchmarks() -> Dict[str, Benchmark]:
     """Get all benchmarks."""
 
     return BENCHMARK_FACTORIES
+
+def check_benchmarks() -> None:
+    """Check if a benchmarks are valid"""
+
+    # TODO: Implement the following checks
+    # 1. fidelity_keys is None and fidelity_space is not None and vice versa
+
+    pass
