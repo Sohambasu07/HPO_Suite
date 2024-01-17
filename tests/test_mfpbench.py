@@ -5,8 +5,8 @@ import argparse
 
 def test_mfpbench(data_dir: Path, 
                   benchmark_name: str, 
-                  task_id: str = None,
-                  fidelity: int = None) -> None:
+                  task_id: str,
+                  fidelity: int | None = None) -> None:
 
     if ("lcbench" in benchmark_name or benchmark_name == "jahs"):
         bench = mfpbench.get(benchmark_name, task_id=task_id, datadir=data_dir)
@@ -20,6 +20,7 @@ def test_mfpbench(data_dir: Path,
 
     else:
         config = bench.sample()
+        print(fidelity)
         print(bench.query(config, at=fidelity).dict())
         print(bench.space)
         fid_range = bench.fidelity_range

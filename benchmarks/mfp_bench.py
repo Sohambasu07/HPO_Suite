@@ -19,7 +19,7 @@ def lcbench_tabular(task_id: str, datadir: Path) -> TabularBenchmark:
         result_keys = table.result_keys,  # Key in the table that corresponds to the result
         fidelity_keys = table.fidelity_key,  # Key in the table that corresponds to the fidelity (e.g. "epoch")
         time_budget = "time",  # Time budget key
-        default_objective = "val_accuracy",  # Default objective to optimize
+        default_objective = "test_cross_entropy",  # Default objective to optimize
         minimize_default = True,  # Whether the default objective should be minimized
     )
 
@@ -37,7 +37,7 @@ def yahpo_surrogate_benchmark(benchmark_name: str, task_id: str, datadir: Path) 
         query_function = yahpo_query_function,
         benchmark = bench,
         time_budget = "time",
-        default_objective = "val_accuracy", # Default objective to optimize
+        default_objective = "test_cross_entropy", # Default objective to optimize
         minimize_default = True, # Whether the default objective should be minimized
     )
 
