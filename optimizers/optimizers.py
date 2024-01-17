@@ -4,14 +4,16 @@ from typing import Dict, TYPE_CHECKING
 if TYPE_CHECKING:
     from hpo_glue.glu import Optimizer
 
-from optimizers.optuna import Optuna_Optimizer
+from optimizers.random_search import RandomSearch
 from optimizers.smac import SMAC_Optimizer, SMAC_BO, SMAC_Hyperband
+from optimizers.optuna import OptunaOptimizer
 
 OPTIMIZERS: Dict[str, Optimizer] = {
-    "SMAC": SMAC_Optimizer,
+    "RandomSearch": RandomSearch,
+    "SMAC_Optimizer": SMAC_Optimizer,
     "SMAC_BO": SMAC_BO,
     "SMAC_Hyperband": SMAC_Hyperband,
-    "Optuna": Optuna_Optimizer,
+    "OptunaOptimizer": OptunaOptimizer,
 }
 
 def get_all_optimizers() -> Dict[str, Optimizer]:

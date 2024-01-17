@@ -2,38 +2,56 @@ from __future__ import annotations
 
 import ConfigSpace as CS
 import optuna
+from optuna.samplers import *
 from optuna.distributions import (
     CategoricalDistribution as Cat,
     FloatDistribution as Float,
     IntDistribution as Int
 )
 from pathlib import Path
+import logging
 
-from hpo_glue.glu import Optimizer, Query, Result, Config, ProblemStatement
+from hpo_glue.glu import Optimizer, Query, Result, Config, Problem
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class OptunaOptimizer(Optimizer):
-    name = "optuna"
-    supports_multifidelity = True
-    supports_multiobjective = True
+    name = "Optuna"
+    # supports_multiobjective = True
 
     def __init__(
         self,
-        problem_statement: ProblemStatement,
+        problem: Problem,
         working_directory: Path,
+        sampler: str | None = None,
         seed: int | None = None
     ):
-        self.problem_statement = problem_statement
+        if isinstance(problem.objectives, list):
+            raise NotImplementedError("# TODO: Implement multiobjective for Optuna")
+        
+        if isinstance(problem.fidelities, list):
+            raise NotImplementedError("# TODO: Manyfidelity not yet implemented for Optuna!")
+        
+        self.problem = problem
         self.working_directory = working_directory
-        if seed is None:
-            seed = -1
+        self.config_space = self.problem.problem_statement.benchmark.config_space
+        self.fidelity_space = self.problem.problem_statement.benchmark.fidelity_space
+        # if seed is None:
+        #     seed = -1
         self.seed = seed
 
         self.study = optuna.create_study(
-            direction="minimize" if self.problem_statement.minimize else "maximize"
+            direction = "minimize" if self.problem.minimize else "maximize"
         )
+
+        if sampler is not None:
+            self.study.sampler = eval(sampler)()
+            __class__.name += f"_{sampler}"
+
         self.distributions = configspace_to_optuna_distributions( 
-            self.problem_statement.config_space
+            self.problem.problem_statement.benchmark.config_space
         )
         self.counter = 0
 
@@ -44,10 +62,10 @@ class OptunaOptimizer(Optimizer):
             values=self.trial.params,
         )
         self.counter += 1
-        return Query(config=config, fidelity=None)
+        return Query(config=config, fidelity = None)
 
     def tell(self, result: Result) -> None:
-        self.study.tell(self.trial, result.result[self.problem_statement.result_keys])
+        self.study.tell(self.trial, result.result[self.problem.objectives])
 
 
 def configspace_to_optuna_distributions(config_space: CS.ConfigurationSpace) -> dict:
@@ -72,3 +90,4 @@ def configspace_to_optuna_distributions(config_space: CS.ConfigurationSpace) -> 
         else:
             raise ValueError("Unrecognized type of hyperparameter in ConfigSpace!")
     return optuna_space
+
