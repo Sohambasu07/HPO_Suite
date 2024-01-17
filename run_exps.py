@@ -1,9 +1,8 @@
 import logging
 from pathlib import Path
 import argparse
-import inspect
 
-from hpo_glue.glu import ProblemStatement, Problem, Run, Experiment, GLUE, GLUEReport, History
+from hpo_glue.glu import ProblemStatement, Problem, Run, Experiment, GLUE, GLUEReport
 from hpo_glue.utils import plot_incumbents
 from optimizers.smac import SMAC_Optimizer, SMAC_BO, SMAC_Hyperband
 from optimizers.random_search import RandomSearch
@@ -43,18 +42,13 @@ def run_exps(budget_type: str,
                       datadir = datadir)
     ]
 
-    optimizers = [
-        RandomSearch,
-        SMAC_Optimizer,
-        SMAC_BO,
-        SMAC_Hyperband
-    ]
-
-    optimizer_kwargs = {
+    optimizers = {  # TODO: Need to figure out a way to include the same Optimizer 
+                    # with different hyperparameters
         "RandomSearch": {},
         "SMAC_Optimizer": {},
         "SMAC_BO": {"xi": 0.01},
-        "SMAC_Hyperband": {"eta": 3}
+        "SMAC_Hyperband": {"eta": 3},
+        "OptunaOptimizer": {"sampler": "TPESampler"}
         }
 
     problems = []
@@ -63,29 +57,18 @@ def run_exps(budget_type: str,
 
     for benchmark in benchmarks:
         for optimizer in optimizers:
-            if GLUE.sanity_checks(
-                optimizer = optimizer,
-                benchmark = benchmark
-            ):
-                problem_statement = ProblemStatement( #add Opt HPs here
-                    optimizer = optimizer,
-                    benchmark = benchmark,
-                    hyperparameters = optimizer_kwargs.get(optimizer.name)
-                )
-
-                problem = Problem(
-                    problem_statement = problem_statement,
-                    objectives = benchmark.default_objective,
-                    minimize = benchmark.minimize_default
-                )
-
-                if isinstance(benchmark.fidelity_keys, list): # put inside constructor 
-                    problem.fidelities = benchmark.fidelity_keys[0]
-                else:
-                    problem.fidelities = benchmark.fidelity_keys
-
-
-                problems.append(problem)
+            problem_statement = ProblemStatement(
+                optimizer = eval(optimizer),
+                benchmark = benchmark,
+                hyperparameters = optimizers[optimizer]
+            )
+            problem = Problem(
+                problem_statement = problem_statement,
+                objectives = benchmark.default_objective,
+                minimize = benchmark.minimize_default,
+                fidelities = benchmark.fidelity_keys # defaults to fidelity_keys[0] in case of a list
+            )
+            problems.append(problem)
 
     # Creating a Run
                 
