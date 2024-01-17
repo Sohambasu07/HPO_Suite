@@ -117,7 +117,7 @@ class ProblemStatement:
         benchmark: Benchmark,
         hyperparameters: dict[str, Any] = {},
     ) -> None:
-        
+                
         self.name = f"{optimizer.name}_{benchmark.name}"
         self.optimizer = optimizer
         self.benchmark = benchmark
@@ -159,9 +159,16 @@ class Problem:
     ) -> None:
         
         self.problem_statement = problem_statement
-        self.objectives = objectives
-        self.fidelities = fidelities
-        self.minimize = minimize
+        self.objectives = objectives    # TODO: Multiobjective not yet supported
+        self.fidelities = fidelities    # TODO: PLACEHOLDER. Manyfidelity not yet supported
+        self.minimize = minimize        # TODO: For testing purposes. Will be replaced
+                                        # by Metrics inside Benchmark object
+
+
+        # TODO: Default to first fidelity if list since we don't support 
+        # manyfidelity yet
+        if isinstance(self.fidelities, list): 
+            self.fidelities = self.fidelities[0]
     
 
     # TODO: Will also need to define some criteria for stopping the optimization.
@@ -183,7 +190,7 @@ class Problem:
 
     # @property
     # def is_multifidelity(self) -> bool:
-    #     return self.fidelity_space is not None #TODO: MF Depends on Optimizer
+    #     return self.fidelity_space is not None #TODO: REVISIT THIS
 
     @property
     def is_manyfidelity(self) -> bool:
@@ -216,8 +223,9 @@ class Run:
         
         self.budget_type = budget_type
         self.budget = budget
-        self.problems = problems
+        self.problems = list(filter(lambda x: GLUE.sanity_checks(x), problems))
         self.seed = seed
+
 
 
 class Experiment:
@@ -662,10 +670,12 @@ class GLUE:
 
 
     def sanity_checks(
-        optimizer: type[Optimizer],
-        benchmark: Benchmark
+        problem: Problem,
     ) -> bool:
-        """Sanity checks to make sure the optimizer and benchmark are compatible"""
+        """Sanity checks to make sure the Problem is valid"""
+
+        optimizer = problem.problem_statement.optimizer
+        benchmark = problem.problem_statement.benchmark
 
         if isinstance(benchmark, TabularBenchmark) and not optimizer.supports_tabular:
             logger.error(
