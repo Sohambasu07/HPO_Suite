@@ -1,6 +1,7 @@
 import logging
 from pathlib import Path
 import argparse
+import yaml
 
 from hpo_glue.glu import ProblemStatement, Problem, Run, Experiment, GLUE, GLUEReport
 from hpo_glue.utils import plot_incumbents
@@ -14,6 +15,7 @@ def run_exps(budget_type: str,
              budget: int,
              seed: int | None, 
              datadir: Path, 
+             exp_config: Path,
              save_dir = Path,
              num_workers = 1
              ) -> GLUEReport:
@@ -42,25 +44,19 @@ def run_exps(budget_type: str,
                       datadir = datadir)
     ]
 
-    optimizers = {  # TODO: Need to figure out a way to include the same Optimizer 
-                    # with different hyperparameters
-        "RandomSearch": {},
-        "SMAC_Optimizer": {},
-        "SMAC_BO": {"xi": 0.01},
-        "SMAC_Hyperband": {"eta": 3},
-        "OptunaOptimizer": {"sampler": "TPESampler"}
-        }
-
     problems = []
 
     # Getting valid ProblemStatements
 
+    with open(exp_config, "r") as f:
+        config = yaml.safe_load(f)
+
     for benchmark in benchmarks:
-        for optimizer in optimizers:
+        for instance in config["optimizer_instances"]:
             problem_statement = ProblemStatement(
-                optimizer = eval(optimizer),
+                optimizer = eval(config["optimizer_instances"][instance]["optimizer"]),
                 benchmark = benchmark,
-                hyperparameters = optimizers[optimizer]
+                hyperparameters = config["optimizer_instances"][instance]["hyperparameters"],
             )
             problem = Problem(
                 problem_statement = problem_statement,
@@ -122,6 +118,10 @@ if __name__ == "__main__":
     parser.add_argument("--datadir", 
                         type=str, 
                         default=Path("./data"))
+
+    parser.add_argument("--exp_config",
+                        type=str,
+                        default=Path("./configs/exp_configs.yaml"))
     
     parser.add_argument("--save_dir", 
                         type=str, 
@@ -137,5 +137,6 @@ if __name__ == "__main__":
              args.budget,
              args.seed, 
              args.datadir, 
+             args.exp_config,
              args.save_dir,
              args.num_workers)
