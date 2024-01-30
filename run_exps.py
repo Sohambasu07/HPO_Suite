@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 import logging
 from pathlib import Path
 import argparse
 import yaml
 
 from hpo_glue.glu import ProblemStatement, Problem, Run, Experiment, GLUE, GLUEReport
-from hpo_glue.utils import plot_incumbents
+from hpo_glue.utils import plot_results
 from optimizers.smac import SMAC_Optimizer, SMAC_BO, SMAC_Hyperband
 from optimizers.random_search import RandomSearch
 from optimizers.optuna import OptunaOptimizer
@@ -13,7 +15,8 @@ from benchmarks.benchmarks import get_benchmark
 
 def run_exps(budget_type: str,
              budget: int,
-             seed: int | None, 
+             seed: int | list[int] | None, 
+             exp_name: str,
              datadir: Path, 
              exp_config: Path,
              save_dir = Path,
@@ -35,13 +38,32 @@ def run_exps(budget_type: str,
     # Get the benchmarks
     
     benchmarks = [
-        get_benchmark(name = "lcbench-tabular",
-                      task_id = "adult", 
-                      datadir = datadir),
-        get_benchmark(name = "yahpo",
-                      benchmark_name = "lcbench",
-                      task_id = "167184", 
-                      datadir = datadir)
+        get_benchmark(
+            name = "lcbench-tabular",
+            task_id = "adult", 
+            datadir = datadir
+        ),
+
+        get_benchmark(
+            name = "yahpo",
+            benchmark_name = "lcbench",
+            task_id = "167184", 
+            datadir = datadir
+        ),
+
+        get_benchmark(
+            name = "yahpo",
+            benchmark_name = "lcbench",
+            task_id = "3945", 
+            datadir = datadir
+        ),
+
+        get_benchmark(
+            name = "yahpo",
+            benchmark_name = "lcbench",
+            task_id = "189908", 
+            datadir = datadir
+        )
     ]
 
     problems = []
@@ -78,13 +100,14 @@ def run_exps(budget_type: str,
     # Creating an Experiment
 
     exp = Experiment(
+        name = exp_name,
         runs = [run],
         n_workers = num_workers
     )
 
     # Running the Experiment
 
-    GLUE.experiment(
+    exp_dir = GLUE.experiment(
         experiment = exp,
         save_dir = save_dir,
     )
@@ -94,10 +117,16 @@ def run_exps(budget_type: str,
 
     # Report the results
     logger.info("GLUE Experiments complete \n")
+    logger.info(f"Results saved at {exp_dir}")
     
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run GLUE Experiments")
+    parser.add_argument("--exp_name", 
+                        type=str,
+                        help="Name of the experiment",
+                        default="test")
+    
     parser.add_argument("--budget_type", 
                         type=str,
                         help="Budget types available: n_trials, fidelity_budget, time_budget",
@@ -107,7 +136,8 @@ if __name__ == "__main__":
                         type=int, 
                         default=25)
     
-    parser.add_argument("--seed", 
+    parser.add_argument("--seeds",
+                        nargs="+", 
                         type=int, 
                         default=None)
     
@@ -133,10 +163,13 @@ if __name__ == "__main__":
     if isinstance(args.save_dir, str):
         args.save_dir = Path(args.save_dir)
 
-    run_exps(args.budget_type,
-             args.budget,
-             args.seed, 
-             args.datadir, 
-             args.exp_config,
-             args.save_dir,
-             args.num_workers)
+    run_exps(
+        budget_type = args.budget_type,
+        budget = args.budget,
+        seed = args.seeds,
+        exp_name = args.exp_name,
+        datadir = args.datadir,
+        exp_config = args.exp_config,
+        save_dir = args.save_dir,
+        num_workers = args.num_workers
+    )
