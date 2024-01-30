@@ -3,3 +3,4 @@ __pycache__/
 results/
 new_env/
 SMAC/
+Optimizers_cache/
