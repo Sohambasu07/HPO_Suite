@@ -26,7 +26,7 @@ class OptunaOptimizer(Optimizer):
         problem: Problem,
         working_directory: Path,
         sampler: str | None = None,
-        seed: int | None = None
+        seed: int | None = None # Only way to add seed to Optuna is by defining a sampler
     ):
         if isinstance(problem.objectives, list):
             raise NotImplementedError("# TODO: Implement multiobjective for Optuna")
@@ -47,8 +47,7 @@ class OptunaOptimizer(Optimizer):
         )
 
         if sampler is not None:
-            self.study.sampler = eval(sampler)()
-            __class__.name += f"_{sampler}"
+            self.study.sampler = eval(sampler)(seed=self.seed)
 
         self.distributions = configspace_to_optuna_distributions( 
             self.problem.problem_statement.benchmark.config_space
