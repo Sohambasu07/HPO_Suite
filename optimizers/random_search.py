@@ -25,22 +25,23 @@ class RandomSearch(Optimizer):
         self.config_space: ConfigurationSpace = self.problem.problem_statement.benchmark.config_space
         self.fidelity_space: list[int] | list[float] = self.problem.problem_statement.benchmark.fidelity_space
         self.objectives = self.problem.objectives
+        if seed is None:
+            seed = self.rng.randint(0, 2**31-1)  # Big number so we can sample 2**31-1 possible configs
         self.seed = seed
         self.rng = random.Random(seed)
+        print(f"Random Search seed: {self.seed}")
         self.minimize = self.problem.minimize
         self.is_manyfidelity = self.problem.is_manyfidelity
         self.is_tabular = self.problem.is_tabular
         self.is_multiobjective = self.problem.is_multiobjective
 
-        if os.path.exists(working_directory) is False:
-            os.makedirs(working_directory)
+        # if os.path.exists(working_directory) is False:
+        #     os.makedirs(working_directory)
         
     def get_config(self, num_configs: int) -> Configuration | list[Configuration]:
         """ Sample a random config or a list of configs from the configuration space """
 
-        sample_seed = self.rng.randint(0, 2**31-1)  # Big number so we can sample 2**31-1 possible configs
-        print(sample_seed)
-        self.config_space.seed(sample_seed)
+        self.config_space.seed(self.seed)
         config = self.config_space.sample_configuration(num_configs)
         return config
         
