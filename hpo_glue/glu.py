@@ -85,12 +85,23 @@ class History:
         hist_df = pd.DataFrame(report, columns=columns)
         return hist_df
 
-    def _save(self, report: pd.DataFrame, savedir: Path, prob_name: str) -> None:
-        """ Save the history of the run """
-        if os.path.exists(savedir) is False:
-            os.mkdir(savedir)
-        filename = "report_" + prob_name + datetime.datetime.now().strftime("%Y%m%d_%H%M%S") + ".csv"
-        report.to_csv(savedir / filename, mode='a', header=True, index=False)
+    def _save(
+            self, 
+            report: pd.DataFrame, 
+            runsave_dir: Path,
+            benchmark_name: str,
+            optimizer_name: str,
+            optimizer_hyperparameters: dict[str, Any],
+            seed: int) -> None:
+        """ Save the history of the run and along with some metadata """
+        
+        
+        optimizer_hyperparameters = optimizer_hyperparameters if bool(optimizer_hyperparameters) else ''
+        filename = f"{benchmark_name}_{optimizer_name}_{optimizer_hyperparameters}"
+        filesave_dir = runsave_dir / benchmark_name/ optimizer_name / str(seed)
+        if os.path.exists(filesave_dir) is False:
+            os.makedirs(filesave_dir)
+        report.convert_dtypes().to_parquet(filesave_dir / f"report_{filename}.parquet", index=False)
 
 
        
@@ -118,12 +129,14 @@ class ProblemStatement:
         hyperparameters: dict[str, Any] = {},
     ) -> None:
                 
-        self.name = f"{optimizer.name}_{benchmark.name}"
         self.optimizer = optimizer
         self.benchmark = benchmark
         self.hyperparameters = hyperparameters
         if self.hyperparameters is None:
             self.hyperparameters = {}
+        self.name = f"{benchmark.name}_{optimizer.name}_"
+        if bool(self.hyperparameters):
+            self.name += f"{list(self.hyperparameters.keys())[0]}-{list(self.hyperparameters.values())[0]}"
 
 
 class Problem:
@@ -230,6 +243,9 @@ class Run:
 
 class Experiment:
 
+    name: str
+    """The name of the Experiment"""
+
     runs: list[Run]
     """The list of Runs inside the Experiment"""
 
@@ -239,9 +255,11 @@ class Experiment:
 
     def __init__(
         self,
+        name,
         runs,
         n_workers = 1
     ) -> None:
+        self.name = name
         self.runs = runs
         self.n_workers = n_workers
 
@@ -531,24 +549,24 @@ class SurrogateBenchmark(Benchmark):
 class GLUEReport:
     optimizer_name: str
     benchmark_name: str
-    problem_statement: ProblemStatement
+    problem: Problem
     history: pd.DataFrame
 
     def __init__(
         self, 
         optimizer_name: str, 
         benchmark_name: str, 
-        problem_statement: ProblemStatement,
+        problem: Problem,
         history: pd.DataFrame,
     ) -> None:
         self.optimizer_name = optimizer_name
         self.benchmark_name = benchmark_name
-        self.problem_statement = problem_statement
+        self.problem = problem
         self.history = history
 
 
 class GLUE:
-    root: Path = Path("./")
+    root: Path = Path(os.getcwd())
 
     def run(problem: Problem,
         save_dir: Path,
@@ -565,29 +583,33 @@ class GLUE:
         optimizer = problem.problem_statement.optimizer
         benchmark = problem.problem_statement.benchmark
 
-        optimizer_working_path = (
-            GLUE.root / save_dir/ optimizer.name / benchmark.name
-        )
+        # optimizer_working_path = (
+        #     GLUE.root / save_dir/ optimizer.name / benchmark.name
+        # )
         opt = optimizer(problem = problem, 
-                        working_directory = optimizer_working_path, 
+                        working_directory = GLUE.root / "Optimizers_cache",
                         seed = seed,
                         **problem.problem_statement.hyperparameters
                         )
 
         check = True
+        max_bud = None
 
-        if budget_type == "time_budget":
-            logger.warning("Time budget is NOT yet fully functional. Unexpected results may occur!")
-            time.sleep(2)
+        # if budget_type == "time_budget":
+        #     logger.warning("Time budget is NOT yet fully functional. Unexpected results may occur!")
+        #     time.sleep(2)
 
-        elif budget_type == "fidelity_budget":
-            logger.warning("Plotting may not be as expected with Fidelity budget!")
-            time.sleep(2)
+        # elif budget_type == "fidelity_budget":
+        #     logger.warning("Plotting may not be as expected with Fidelity budget!")
+        #     time.sleep(2)
 
-        elif budget_type == "n_trials":
-            time.sleep(2)
+        # elif budget_type == "n_trials":
+        #     time.sleep(2)
 
-        else:
+        # else:
+        #     raise ValueError(f"Budget type {budget_type} not supported!")
+
+        if budget_type != "n_trials" and budget_type != "time_budget" and budget_type != "fidelity_budget":
             raise ValueError(f"Budget type {budget_type} not supported!")
 
         logger.info(f"Running Problem: {problem.problem_statement.name}, budget: {budget}, "
@@ -611,9 +633,11 @@ class GLUE:
 
             elif budget_type == "time_budget":
                 budget_num += result.result[benchmark.time_budget]
+                max_bud = result.result[benchmark.time_budget]
             
             # Does not account for manyfidelity
-            elif budget_type == "fidelity_budget": 
+            elif budget_type == "fidelity_budget":
+                max_bud = benchmark.fidelity_space[-1]
                 if optimizer.supports_multifidelity:
                     budget_num += result.query.fidelity
                 else:
@@ -621,36 +645,53 @@ class GLUE:
 
             check = budget_num <= budget if budget_type == "n_trials" else budget_num < budget
 
-            print(budget_num, budget, check)
+            # print(budget_num, budget, check)
 
             if check is False:
-                print("Budget exhausted!")
+                # print("Budget exhausted!")
                 break       #TODO: Doesn't work when using SMAC
 
             # Print the results
-            logger.info(f"Budget No. {budget_num}\n")
-            print("-------------------------------")
+            # logger.info(f"Budget No. {budget_num}\n")
+            # print("-------------------------------")
+
+            # logger.info(result.result) 
+           
+            # print("-------------------------------\n")
 
             history.add(result)
-            logger.info(result.result) 
-           
-            print("-------------------------------\n")
 
         cols = (
-            ["Config id", "Fidelity"]
+            ["config_id", "fidelity"]
             + list(result.query.config.values.keys())
             + list(result.result.keys())
         )
 
         hist = history.df(cols)
-        hist["Optimizer Name"] = optimizer.name
-        hist["Benchmark Name"] = benchmark.name
+        hist['max_budget'] = max_bud
+        hist['minimize'] = problem.minimize
+        hist['objectives'] = problem.objectives
+        hist['optimizer_hyperparameters'] = problem.problem_statement.hyperparameters
+        hist["budget_type"] = budget_type
+        hist["budget"] = budget
+        hist["seed"] = seed
+        hist["optimizer_name"] = optimizer.name
+        hist["benchmark_name"] = benchmark.name
 
-        history._save(hist, save_dir, problem.problem_statement.name)
+        history._save(
+            report = hist,
+            runsave_dir = save_dir,
+            benchmark_name = benchmark.name,
+            optimizer_name = optimizer.name,
+            optimizer_hyperparameters = problem.problem_statement.hyperparameters,
+            seed = seed
+        )
+        
+        
         print(hist)
-        print(hist["Fidelity"].value_counts())
+        # print(hist["Fidelity"].value_counts())
 
-        return GLUEReport(optimizer.name, benchmark.name, problem.problem_statement, hist)
+        return GLUEReport(optimizer.name, benchmark.name, problem, hist)
     
     def experiment(
         experiment: Experiment,
@@ -658,15 +699,41 @@ class GLUE:
     ):
         """Runs an experiment, returning a report."""
 
-        for run in experiment.runs:
-            for problem in run.problems:
-                _ = GLUE.run(
-                    problem = problem,
-                    save_dir = save_dir,
-                    budget_type = run.budget_type,
-                    budget = run.budget,
-                    seed = run.seed,
-                    )
+        # Creating current Experiment directory       
+        exp_dir = f"Exp_{experiment.name}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        save_dir = save_dir / exp_dir
+        if os.path.exists(save_dir) is False:
+            os.makedirs(save_dir)
+
+        # Running the experiment using GLUE.run()
+        for i, run in enumerate(experiment.runs):
+            logger.info(f"Executing Run: {i}")
+            run_dir = f"Run_{run.budget_type}_{run.budget}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            runsave_dir = save_dir / run_dir
+            if os.path.exists(runsave_dir) is False:
+                os.mkdir(runsave_dir)
+            if isinstance(run.seed, int) or run.seed is None:
+                run.seed = [run.seed]
+            elif isinstance(run.seed, list) is False:
+                raise ValueError("Seed should be of type int, list[int] or None!")
+            
+            for seed in run.seed:
+                logger.info(f"Running with Seed = {seed}")
+                for problem in run.problems:
+                    problem_dir = runsave_dir / problem.problem_statement.benchmark.name / problem.problem_statement.optimizer.name
+                    if os.path.exists(problem_dir) is False:
+                        os.makedirs(problem_dir)
+                    # seedsave_dir = problem_dir / f"Seed_{seed}"
+                    # if os.path.exists(seedsave_dir) is False:
+                    #     os.makedirs(seedsave_dir)
+                    _ = GLUE.run(
+                        problem = problem,
+                        save_dir = runsave_dir,
+                        budget_type = run.budget_type,
+                        budget = run.budget,
+                        seed = seed,
+                        )
+        return save_dir
 
 
     def sanity_checks(
