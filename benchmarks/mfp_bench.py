@@ -6,7 +6,13 @@ from typing import TYPE_CHECKING
 
 from hpo_glue.glu import TabularBenchmark, SurrogateBenchmark, Query
 
-def lcbench_tabular(task_id: str, datadir: Path) -> TabularBenchmark:
+def lcbench_tabular(
+        task_id: str, 
+        datadir: Path | str
+) -> TabularBenchmark:
+    
+    if isinstance(datadir, str):
+        datadir = Path(datadir)
 
     datadir = datadir / "lcbench-tabular"
     table = mfpbench.get("lcbench_tabular", task_id=task_id, datadir=datadir)
@@ -23,7 +29,15 @@ def lcbench_tabular(task_id: str, datadir: Path) -> TabularBenchmark:
         minimize_default = True,  # Whether the default objective should be minimized
     )
 
-def yahpo_surrogate_benchmark(benchmark_name: str, task_id: str, datadir: Path) -> SurrogateBenchmark:
+def yahpo_surrogate_benchmark(
+        benchmark_name: str, 
+        task_id: str, 
+        datadir: Path
+) -> SurrogateBenchmark:
+    
+    if isinstance(datadir, str):
+        datadir = Path(datadir)
+
     datadir = datadir / "yahpo"
     bench = mfpbench.get(benchmark_name, task_id=task_id, datadir=datadir)
     fid_range = bench.fidelity_range
