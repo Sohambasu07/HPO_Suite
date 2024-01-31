@@ -32,11 +32,7 @@ def plot_results(
     colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
     colors_mean = cycle(colors)
     optimizers = list(report.keys())
-    # ncols = len(report.keys())
-    # nrows = math.ceil(ncols / 100)
-    # fig, _axs = plt.subplots(nrows, ncols)
-    # axs: list[plt.Axes] = list(_axs.flatten())
-    # for col, (instance, ax) in enumerate(zip(report.keys(), axs)):
+    print(f"Plotting performance of Optimizers on {benchmarks_name}")
     plt.figure(figsize=(20, 10))
     optim_res_dict = dict()
     for instance in optimizers:
@@ -178,7 +174,9 @@ def agg_data(
                         budget = res_df[['budget']].iloc[0].values[0]
                         minimize = res_df[['minimize']].iloc[0].values[0]
                         res_df = res_df[[objective, 'fidelity', 'max_budget', 'objectives']]
-                        df_agg[file.split(".parquet")[0]][int(seed)] = {
+                        instance = (file.split(".parquet")[0]).split(bench_dir)[-1][1:]
+                        instance = instance[:-1] if instance[-1] == "_" else instance
+                        df_agg[instance][int(seed)] = {
                             "results": res_df
                         }
             # pprint.pprint(df_agg, indent=4)
