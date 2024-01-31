@@ -30,10 +30,6 @@ def run_exps(budget_type: str,
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
     logger.info("Running GLUE Experiments")
-
-    # Set GLUE Root path
-
-    GLUE.root = Path("./")
     
     # Get the benchmarks
     
@@ -75,17 +71,21 @@ def run_exps(budget_type: str,
 
     for benchmark in benchmarks:
         for instance in config["optimizer_instances"]:
-            problem_statement = ProblemStatement(
-                optimizer = eval(config["optimizer_instances"][instance]["optimizer"]),
-                benchmark = benchmark,
-                hyperparameters = config["optimizer_instances"][instance]["hyperparameters"],
-            )
-            problem = Problem(
-                problem_statement = problem_statement,
-                objectives = benchmark.default_objective,
-                minimize = benchmark.minimize_default,
-                fidelities = benchmark.fidelity_keys # defaults to fidelity_keys[0] in case of a list
-            )
+            try:
+                problem_statement = ProblemStatement(
+                    benchmark = benchmark,
+                    optimizer = eval(config["optimizer_instances"][instance]["optimizer"]),
+                    hyperparameters = config["optimizer_instances"][instance]["hyperparameters"],
+                )
+                problem = Problem(
+                    problem_statement = problem_statement,
+                    objectives = benchmark.default_objective,
+                    minimize = benchmark.minimize_default,
+                    fidelities = benchmark.fidelity_keys # defaults to fidelity_keys[0] in case of a list
+                )
+            except Exception as e:
+                logger.info(e)
+                continue
             problems.append(problem)
 
     # Creating a Run
