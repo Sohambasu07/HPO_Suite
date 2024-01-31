@@ -124,8 +124,8 @@ class ProblemStatement:
 
     def __init__(
         self,
-        optimizer: Optimizer,
         benchmark: Benchmark,
+        optimizer: Optimizer,
         hyperparameters: dict[str, Any] = {},
     ) -> None:
                 
@@ -151,6 +151,9 @@ class Problem:
     * list[str] -> multi-objective
     """
 
+    minimize: bool | list[bool]
+    """Whether to minimize or maximize the objective value. One per objective"""
+
     fidelities: str | list[str] | None
     """The key(s) in the result that we want to consider as the fidelity
 
@@ -159,29 +162,29 @@ class Problem:
     * None -> no fidelity
     """
 
-    minimize: bool | list[bool]
-    """Whether to minimize or maximize the objective value. One per objective"""
-
 
     def __init__(
         self,
         problem_statement: ProblemStatement,
         objectives: str | list[str],
-        fidelities: str | list[str] | None = None,
         minimize: bool | list[bool] = True,
+        fidelities: str | list[str] | None = None,
     ) -> None:
-        
+                
         self.problem_statement = problem_statement
         self.objectives = objectives    # TODO: Multiobjective not yet supported
-        self.fidelities = fidelities    # TODO: PLACEHOLDER. Manyfidelity not yet supported
         self.minimize = minimize        # TODO: For testing purposes. Will be replaced
                                         # by Metrics inside Benchmark object
+        self.fidelities = fidelities    # TODO: PLACEHOLDER. Manyfidelity not yet supported
 
 
         # TODO: Default to first fidelity if list since we don't support 
         # manyfidelity yet
         if isinstance(self.fidelities, list): 
             self.fidelities = self.fidelities[0]
+
+        if not GLUE.sanity_checks(self):
+            raise ValueError("Problem is not valid!")
     
 
     # TODO: Will also need to define some criteria for stopping the optimization.
@@ -236,7 +239,8 @@ class Run:
         
         self.budget_type = budget_type
         self.budget = budget
-        self.problems = list(filter(lambda x: GLUE.sanity_checks(x), problems))
+        self.problems = problems
+        # self.problems = list(filter(lambda x: GLUE.sanity_checks(x), problems))
         self.seed = seed
 
 
@@ -569,12 +573,22 @@ class GLUE:
     root: Path = Path(os.getcwd())
 
     def run(problem: Problem,
-        save_dir: Path,
+        exp_dir: Path | str,
         budget_type: str,
         budget: int,
         seed: int | None = None
     ) -> GLUEReport:
         """Runs an optimizer on a benchmark, returning a report."""
+
+        if isinstance(exp_dir, str):
+            exp_dir = Path(exp_dir)
+
+        if not os.path.exists(exp_dir):
+            exp_dir = GLUE.root / exp_dir
+            os.makedirs(exp_dir)
+
+        run_dir = f"Run_{budget_type}_{budget}"
+        run_dir = exp_dir / run_dir
 
 
         budget_num = 0
@@ -680,7 +694,7 @@ class GLUE:
 
         history._save(
             report = hist,
-            runsave_dir = save_dir,
+            runsave_dir = run_dir,
             benchmark_name = benchmark.name,
             optimizer_name = optimizer.name,
             optimizer_hyperparameters = problem.problem_statement.hyperparameters,
@@ -695,23 +709,24 @@ class GLUE:
     
     def experiment(
         experiment: Experiment,
-        save_dir: Path,
+        save_dir: Path | str,
+        root_dir: Path | str = Path(os.getcwd()),
     ):
         """Runs an experiment, returning a report."""
 
-        # Creating current Experiment directory       
+        # Creating current Experiment directory
+        if isinstance(root_dir, str):
+            root_dir = Path(root_dir)
+
+        GLUE.root = root_dir
+        save_dir = root_dir / save_dir
+               
         exp_dir = f"Exp_{experiment.name}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        save_dir = save_dir / exp_dir
-        if os.path.exists(save_dir) is False:
-            os.makedirs(save_dir)
+        exp_dir = save_dir / exp_dir
 
         # Running the experiment using GLUE.run()
         for i, run in enumerate(experiment.runs):
             logger.info(f"Executing Run: {i}")
-            run_dir = f"Run_{run.budget_type}_{run.budget}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
-            runsave_dir = save_dir / run_dir
-            if os.path.exists(runsave_dir) is False:
-                os.mkdir(runsave_dir)
             if isinstance(run.seed, int) or run.seed is None:
                 run.seed = [run.seed]
             elif isinstance(run.seed, list) is False:
@@ -720,20 +735,14 @@ class GLUE:
             for seed in run.seed:
                 logger.info(f"Running with Seed = {seed}")
                 for problem in run.problems:
-                    problem_dir = runsave_dir / problem.problem_statement.benchmark.name / problem.problem_statement.optimizer.name
-                    if os.path.exists(problem_dir) is False:
-                        os.makedirs(problem_dir)
-                    # seedsave_dir = problem_dir / f"Seed_{seed}"
-                    # if os.path.exists(seedsave_dir) is False:
-                    #     os.makedirs(seedsave_dir)
                     _ = GLUE.run(
                         problem = problem,
-                        save_dir = runsave_dir,
+                        exp_dir = exp_dir,
                         budget_type = run.budget_type,
                         budget = run.budget,
                         seed = seed,
                         )
-        return save_dir
+        return exp_dir
 
 
     def sanity_checks(
