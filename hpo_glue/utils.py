@@ -93,6 +93,8 @@ def plot_results(
     plt.xlabel(f"{budget_type}")
     plt.ylabel(f"{objective}")
     plt.title(f"Performance of Optimizers on {benchmarks_name}")
+    if len(optimizers) == 1:
+        plt.title(f"Performance of {optimizers[0]} on {benchmarks_name}")
     plt.legend()
     if not os.path.exists(save_dir):
         os.mkdir(save_dir)
@@ -100,16 +102,17 @@ def plot_results(
     plt.show()
     optim_means = pd.DataFrame({k: v["means"] for k, v in optim_res_dict.items()})
     optim_stds = pd.DataFrame({k: v["std"] for k, v in optim_res_dict.items()})
-    plot_by_ranking(
-        optim_means = optim_means,
-        optim_stds = optim_stds,
-        budget_type = budget_type,
-        budget = budget,
-        objective = objective,
-        minimize = minimize,
-        save_dir = save_dir,
-        benchmarks_name = benchmarks_name,
-    )
+    if len(optimizers) > 1:
+        plot_by_ranking(
+            optim_means = optim_means,
+            optim_stds = optim_stds,
+            budget_type = budget_type,
+            budget = budget,
+            objective = objective,
+            minimize = minimize,
+            save_dir = save_dir,
+            benchmarks_name = benchmarks_name,
+        )
 
 
 def plot_by_ranking(
