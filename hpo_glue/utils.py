@@ -43,13 +43,16 @@ def plot_results(
         for seed in report[instance].keys():
             results = report[instance][seed]["results"]
             cost_list = results[results["objectives"][0]].values.astype(np.float64)
-            budget_list = report[instance][seed]["results"]["fidelity"].values.astype(np.float64)
-            if np.isnan(budget_list[0]):
-                budget_list = np.cumsum(np.repeat(float(results["max_budget"][0]), len(budget_list)))
-                if len(budget_list) > len(budgets):
-                    budgets = budget_list
-            else:
-                budget_list = np.cumsum(budget_list)
+            if budget_type == "fidelity":
+                budget_list = report[instance][seed]["results"]["fidelity"].values.astype(np.float64)
+                if np.isnan(budget_list[0]):
+                    budget_list = np.cumsum(np.repeat(float(results["max_budget"][0]), len(budget_list)))
+                    if len(budget_list) > len(budgets):
+                        budgets = budget_list
+                else:
+                    budget_list = np.cumsum(budget_list)
+            elif budget_type =="n_trials":
+                budget_list = np.arange(1, budget + 1)
             seed_cost_dict[seed] = pd.Series(cost_list, index = budget_list)
         seed_cost_df = pd.DataFrame(seed_cost_dict)
         seed_cost_df.ffill(axis = 0, inplace = True)
