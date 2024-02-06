@@ -43,7 +43,7 @@ def plot_results(
         for seed in report[instance].keys():
             results = report[instance][seed]["results"]
             cost_list = results[results["objectives"][0]].values.astype(np.float64)
-            if budget_type == "fidelity":
+            if budget_type == "fidelity_budget":
                 budget_list = report[instance][seed]["results"]["fidelity"].values.astype(np.float64)
                 if np.isnan(budget_list[0]):
                     budget_list = np.cumsum(np.repeat(float(results["max_budget"][0]), len(budget_list)))
