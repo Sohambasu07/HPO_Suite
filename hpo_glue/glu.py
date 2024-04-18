@@ -601,7 +601,11 @@ class GLUE:
         #     GLUE.root / save_dir/ optimizer.name / benchmark.name
         # )
         opt = optimizer(problem = problem, 
-                        working_directory = GLUE.root / "Optimizers_cache",
+                        working_directory = (
+                            GLUE.root / 
+                            "Optimizers_cache" / 
+                            f"{optimizer.name}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                        ),
                         seed = seed,
                         **problem.problem_statement.hyperparameters
                         )
