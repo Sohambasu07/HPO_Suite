@@ -57,4 +57,4 @@ def yahpo_surrogate_benchmark(
 
 def yahpo_query_function(benchmark, query: Query):
     q = benchmark.query(query.config.values, at=query.fidelity)
-    return q.dict()
+    return q.as_dict()
