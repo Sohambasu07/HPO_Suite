@@ -1,9 +1,38 @@
-dependencies = [
-    "pandas>=2,<3",
-    "matplotlib>=3,<4",
-    "yahpo-gym==1.0.1",
-    "optuna>=3,<4",
-    "smac",
-]
-
+[project]
+name = "amltk"
+version = "0.1.0"
 requires-python = ">=3.10"
+dependencies = [
+  "pandas>=2,<3",
+  "matplotlib>=3,<4",
+]
+authors = [
+  { name = "Soham Basu", email = "Soham.Basu07@gmail.com" },
+  { name = "Eddie Bergman", email = "eddiebergmanhs@gmail.com" },
+  { name = "Neeratyoy Malik", email = "neeratyoy@gmail.com" },
+]
+readme = "README.md"
+description = "A lightweight framework for benchmarking HPO algorithms"
+classifiers = [
+  'Intended Audience :: Science/Research',
+  'Intended Audience :: Developers',
+  'License :: OSI Approved :: BSD License',
+  'Programming Language :: Python',
+  'Topic :: Software Development',
+  'Topic :: Scientific/Engineering',
+  'Operating System :: POSIX',
+  'Operating System :: Unix',
+  'Operating System :: MacOS',
+  'Programming Language :: Python :: 3',
+  'Programming Language :: Python :: 3.10',
+  'Programming Language :: Python :: 3.11',
+]
+license = { file = "LICENSE" }
+
+[project.optional-dependencies]
+optuna = ["optuna"]
+yahpo-gym = ["yahpo-gym"]
+smac = ["smac"]
+
+[project.urls]
+source = "https://github.com/Sohambasu07/HPO_Suite/"
