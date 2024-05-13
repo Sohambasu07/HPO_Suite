@@ -1,0 +1,16 @@
+pandas<3,>=2
+matplotlib<4,>=3
+
+[dev]
+ruff
+mypy
+pre-commit
+
+[optuna]
+optuna
+
+[smac]
+smac
+
+[yahpo-gym]
+yahpo-gym
