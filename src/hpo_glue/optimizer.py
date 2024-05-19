@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
@@ -66,7 +66,7 @@ class Optimizer(ABC):
         *,
         hyperparameters: dict[str, Any] | list[dict[str, Any]] | None = None,
         budget: BudgetType | int | float,
-        seeds: int | list[int],
+        seeds: int | Iterable[int],
         fidelities: int = 0,
         objectives: int = 1,
         costs: int = 0,
@@ -79,9 +79,9 @@ class Optimizer(ABC):
         amount of objectives, fidelities or costs, a ValueError will be raised.
 
         Args:
-            hyperparameters: The hyperparameters to use for the optimizer, if any.
-            benchmark: The benchmark to generate problems for.
+            benchmarks: The benchmark to generate problems for.
                 Can provide a single benchmark or a list of benchmarks.
+            hyperparameters: The hyperparameters to use for the optimizer, if any.
             budget: The budget to use for the problems. Budget defaults to a n_trials budget
                 where when multifidelty is enabled, fractional budget can be used and 1 is
                 equivalent a full fidelity trial.

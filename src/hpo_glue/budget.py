@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 class TrialBudget:
     """A budget for the number of trials to run."""
 
-    budget: int | float
+    budget: int
     """Total amount of budget allowed for the optimizer for this problem.
 
     How this is interpreted is depending on fidelity type.
@@ -51,8 +51,10 @@ class TrialBudget:
             case None:
                 return 1
             case (_, fidelity_desc):
-                assert isinstance(result.fidelity, int | float)
-                return fidelity_desc.normalize(result.fidelity)
+                assert isinstance(result.fidelity, tuple)
+                fid_value = result.fidelity[1]
+                assert isinstance(fid_value, int | float)
+                return fidelity_desc.normalize(fid_value)
             case Mapping():
                 assert problem.benchmark.fidelities is not None
                 assert isinstance(result.fidelity, dict)
@@ -68,14 +70,16 @@ class TrialBudget:
             case _:
                 raise TypeError("Fidelity must be None, str, or list[str]")
 
-    def update(self, *, result: Result, problem: Problem) -> None:
+    def update(self, *, result: Result, problem: Problem) -> float:
         """Update the budget with the result of a trial.
 
         Args:
             result: The result of the trial.
             problem: The original problem statement.
         """
-        self.used_budget += self.calculate_used_budget(result=result, problem=problem)
+        used_budget = self.calculate_used_budget(result=result, problem=problem)
+        self.used_budget += used_budget
+        return used_budget
 
     def should_stop(self) -> bool:
         """Check if the budget has been used up."""
@@ -101,7 +105,7 @@ class CostBudget:
     def __post_init__(self):
         raise NotImplementedError("Cost budgets not yet supported")
 
-    def update(self, *, result: Result, problem: Problem) -> None:
+    def update(self, *, result: Result, problem: Problem) -> float:
         """Update the budget with the result of a trial.
 
         Args:

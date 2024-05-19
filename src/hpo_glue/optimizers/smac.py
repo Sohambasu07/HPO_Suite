@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Hashable, Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, NoReturn
 
 from ConfigSpace import ConfigurationSpace
 from smac import (
@@ -13,6 +13,7 @@ from smac import (
 from smac.runhistory.dataclasses import TrialInfo, TrialValue
 from smac.runhistory.enumerations import StatusType
 
+from hpo_glue.budget import CostBudget, TrialBudget
 from hpo_glue.config import Config
 from hpo_glue.optimizer import Optimizer
 from hpo_glue.problem import Problem
@@ -23,6 +24,10 @@ if TYPE_CHECKING:
 
     from hpo_glue.problem import Fidelity
     from hpo_glue.result import Result
+
+
+def _dummy_target_function(*args: Any, budget: int | float, seed: int) -> NoReturn:
+    raise RuntimeError("This should never be called!")
 
 
 class SMAC_Optimizer(Optimizer):
@@ -167,11 +172,19 @@ class SMAC_BO(SMAC_Optimizer):
 
         working_directory.mkdir(parents=True, exist_ok=True)
 
+        match problem.budget:
+            case TrialBudget():
+                budget = problem.budget.budget
+            case CostBudget():
+                raise ValueError("SMAC BO does not support cost-aware benchmarks!")
+            case _:
+                raise TypeError("Budget must be a TrialBudget or a CostBudget!")
+
         scenario = Scenario(
             configspace=config_space,
             deterministic=True,
             objectives=metric_names,
-            n_trials=0,
+            n_trials=budget,
             seed=problem.seed,
             output_directory=working_directory / "smac-output",
             min_budget=None,
@@ -184,7 +197,8 @@ class SMAC_BO(SMAC_Optimizer):
             fidelity=None,
             optimizer=BOFacade(
                 scenario=scenario,
-                target_function=lambda *_: None,
+                logging_level=False,
+                target_function=_dummy_target_function,
                 intensifier=BOFacade.get_intensifier(scenario),
                 acquisition_function=BOFacade.get_acquisition_function(scenario, xi=xi),
                 overwrite=True,
@@ -250,12 +264,19 @@ class SMAC_Hyperband(SMAC_Optimizer):
                 raise TypeError("Objective must be a tuple of (name, metric) or a mapping")
 
         working_directory.mkdir(parents=True, exist_ok=True)
+        match problem.budget:
+            case TrialBudget():
+                budget = problem.budget.budget
+            case CostBudget():
+                raise ValueError("SMAC BO does not support cost-aware benchmarks!")
+            case _:
+                raise TypeError("Budget must be a TrialBudget or a CostBudget!")
 
         scenario = Scenario(
             configspace=config_space,
             deterministic=True,
             objectives=metric_names,
-            n_trials=0,
+            n_trials=budget,
             seed=problem.seed,
             output_directory=working_directory / "smac-output",
             min_budget=min_fidelity,
@@ -268,7 +289,8 @@ class SMAC_Hyperband(SMAC_Optimizer):
             fidelity=_fid,
             optimizer=HBFacade(
                 scenario=scenario,
-                target_function=lambda *_: None,
+                logging_level=False,
+                target_function=_dummy_target_function,
                 intensifier=HBFacade.get_intensifier(scenario, eta=eta),
                 overwrite=True,
             ),

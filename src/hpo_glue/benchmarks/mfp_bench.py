@@ -62,9 +62,15 @@ def _get_surrogate_benchmark(
 
 
 def _mfpbench_surrogate_query_function(query: Query, benchmark: mfpbench.Benchmark) -> Result:
+    assert isinstance(query.fidelity, tuple)
+    _, fid_value = query.fidelity
     return Result(
         query=query,
-        values=benchmark.query(query.config.values, at=query.fidelity).as_dict(),
+        values=benchmark.query(
+            query.config.values,
+            at=fid_value,
+        ).as_dict(),
+        fidelity=query.fidelity,
     )
 
 

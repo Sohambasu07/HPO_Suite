@@ -34,7 +34,7 @@ def _on_error(
             return
 
 
-def _generate_problem_set(
+def _generate_problem_set(  # noqa: C901, PLR0911, PLR0912, PLR0915
     optimizers: (
         type[Optimizer] | OptWithHps | list[type[Optimizer]] | list[OptWithHps | type[Optimizer]]
     ),

@@ -88,7 +88,11 @@ class Result:
     def from_series(cls, series: pd.Series) -> Result:
         """Create a Result from a pandas Series."""
         return Result(
-            query=Query.from_series(series.filter(like="query.")),
-            values=series.filter(like="result.value.").to_dict(),
-            fidelity=series.filter(like="result.fidelity.").to_dict(),
+            query=Query.from_series(series.filter(regex=r"query\.|config\.")),
+            values=series.filter(like="result.value.")
+            .rename(lambda x: x[len("result.value.") :])
+            .to_dict(),
+            fidelity=series.filter(like="result.fidelity.")
+            .rename(lambda x: x[len("result.fidelity.") :])
+            .to_dict(),
         )

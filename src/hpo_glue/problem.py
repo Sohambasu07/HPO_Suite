@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Literal, TypeAlias
 
 import pandas as pd
 
+from hpo_glue.budget import CostBudget, TrialBudget
 from hpo_glue.history import History
 from hpo_glue.optimizer import Optimizer
 
@@ -99,15 +100,6 @@ class Problem:
     supports_trajectory: bool = field(init=False)
     """Whether the problem setup allows for trajectories to be queried."""
 
-    started_flag_path: Path = field(init=False)
-    """The path to the started flag"""
-
-    crashed_flag_path: Path = field(init=False)
-    """The path to the crashed flag"""
-
-    success_flag_path: Path = field(init=False)
-    """The path to the finished flag"""
-
     def __post_init__(self):
         self.is_tabular = self.benchmark.is_tabular
         self.is_manyfidelity: bool
@@ -164,29 +156,13 @@ class Problem:
             "objective": objective_str,
             "hp_kwargs": hp_str,
         }
+        self._objective_str = objective_str
         self.name = "_".join(f"{k}={v}" for k, v in name_parts.items())
-        self.path = Path(*[f"{k}={v}" for k, v in name_parts.items()])
-        self.started_flag_path = self.path / "started.flag"
-        self.crashed_flag_path = self.path / "crashed.flag"
-        self.success_flag_path = self.path / "success.flag"
         self.optimizer.support.check_opt_support(who=self.optimizer.name, problem=self)
 
     def as_dict(self) -> dict[str, Any]:
         """Return the Problem as a dictionary."""
         return asdict(self)
-
-    def state(self) -> ProblemState:
-        """Return the state of the problem."""
-        if self.crashed_flag_path.exists():
-            return ProblemState.crashed
-
-        if self.success_flag_path.exists():
-            return ProblemState.finished
-
-        if self.started_flag_path.exists():
-            return ProblemState.running
-
-        return ProblemState.pending
 
     def run(
         self,
@@ -202,7 +178,7 @@ class Problem:
         """
         from hpo_glue._run import run_problem
 
-        return run_problem.run(problem=self, expdir=expdir, overwrite=overwrite)
+        return run_problem(problem=self, expdir=expdir, overwrite=overwrite)
 
     @classmethod
     def generate(
@@ -262,6 +238,54 @@ class Problem:
             multi_objective_generation=multi_objective_generation,
             on_error=on_error,
         )
+
+    def series(self) -> pd.Series:
+        """Return the Problem as a pandas Series."""
+        parts = {}
+        parts["name"] = self.name
+
+        match self.objective:
+            case tuple():
+                parts["objective"] = self.objective[0]
+            case Mapping():
+                parts["objective"] = ",".join(self.objective.keys())
+            case _:
+                raise TypeError("Objective must be a tuple (name, measure) or a mapping")
+
+        match self.fidelity:
+            case None:
+                parts["fidelity"] = None
+            case (name, _):
+                parts["fidelity"] = name
+            case Mapping():
+                parts["fidelity"] = ",".join(self.fidelity.keys())
+
+        match self.cost:
+            case None:
+                parts["cost"] = None
+            case (name, _):
+                parts["cost"] = name
+            case Mapping():
+                parts["cost"] = ",".join(self.cost.keys())
+
+        parts["benchmark"] = self.benchmark.name
+        parts["seed"] = self.seed
+        match self.budget:
+            case TrialBudget(budget):
+                parts["budget.kind"] = "TrialBudget"
+                parts["budget.value"] = budget
+            case CostBudget(budget):
+                parts["budget.kind"] = "CostBudget"
+                parts["budget.value"] = budget
+            case _:
+                raise NotImplementedError(f"Unknown budget type {self.budget}")
+
+        parts["opt.name"] = self.optimizer.name
+
+        for k, v in self.optimizer_hyperparameters.items():
+            parts[f"opt.hp.{k}"] = v
+
+        return pd.Series({f"problem.{k}": v for k, v in parts.items()})
 
     @dataclass(kw_only=True)
     class Support:
@@ -324,17 +348,24 @@ class Problem:
 
         problem: Problem
         history: History
-        path: Path = field(init=False)
-
-        def __post_init__(self):
-            self.path = self.problem.path
 
         def df(self) -> pd.DataFrame:
             """Return the history as a pandas DataFrame."""
             # Fill in the fields of the problem as constant columns
-            return self.history.df().assign(
-                **{f"problem.{k}": v for k, v in asdict(self.problem).items()}
-            )
+            _df = self.history.df()
+            problem_series = self.problem.series()
+            for k, v in problem_series.items():
+                _df[k] = v
+
+            return _df.convert_dtypes()
+
+        @classmethod
+        def from_df(cls, df: pd.DataFrame, problem: Problem) -> Problem.Report:
+            return cls(problem=problem, history=History.from_df(df))
+
+        def save(self, path: Path) -> None:
+            """Save the GLUEReport to a path."""
+            self.df().to_parquet(path, index=False)
 
         @classmethod
         def from_path(cls, path: Path) -> Problem.Report:

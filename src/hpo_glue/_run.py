@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import logging
 import shutil
-import time
+import warnings
 from pathlib import Path
+
+import pandas as pd
+from tqdm import TqdmWarning, tqdm
 
 from hpo_glue.history import History
 from hpo_glue.problem import Problem
@@ -26,10 +29,12 @@ def run_problem(
     problem: Problem,
     *,
     expdir: Path | str = "hpo-glue-output",
+    save: bool = True,
     overwrite: bool = False,
 ) -> Problem.Report:
     """Runs an optimizer on a benchmark, returning a report."""
-    path = Path(expdir) / problem.path
+    path = Path(expdir) / problem.name
+    df_path = Path(expdir) / "dfs" / f"{problem.name}.parquet"
     if overwrite:
         logger.info(f"Overwriting {problem.name} at {path} as `overwrite=True` was set.")
         if path.exists():
@@ -38,11 +43,23 @@ def run_problem(
             except Exception as e:
                 logger.exception(e)
                 logger.error(f"Error deleting {path}: {e}")
+        if df_path.exists():
+            try:
+                df_path.unlink()
+            except Exception as e:
+                logger.exception(e)
+                logger.error(f"Error deleting {df_path}: {e}")
     elif path.exists():
-        raise FileExistsError(
-            f"Output already exists at {path}." " Set `overwrite=True` to overwrite.",
+        if df_path.exists():
+            logger.info(f"Loading results for {problem.name} from {path}")
+            return Problem.Report.from_df(df=pd.read_parquet(df_path), problem=problem)
+        raise RuntimeError(
+            "The optimizer ran before but no dataframe of results was found at "
+            f"{df_path}. Set `overwrite=True` to rerun the optimizer."
         )
-    problem.path.mkdir(parents=True, exist_ok=True)
+
+    df_path.parent.mkdir(parents=True, exist_ok=True)
+    path.mkdir(parents=True, exist_ok=True)
 
     benchmark = problem.benchmark.load(problem.benchmark)
 
@@ -52,25 +69,30 @@ def run_problem(
         problem=problem,
         working_directory=path / "optimizer_dir",
         config_space=benchmark.config_space,
-        seed=problem.seed,
         **problem.optimizer_hyperparameters,
     )
 
     budget_tracker = problem.budget.clone()
 
-    logger.info(f"Running Problem: {problem}")
-    while not budget_tracker.should_stop():
-        ask_start = time.time()
-        config = opt.ask()
-        time.time() - ask_start
+    # NOTE(eddiebergman): Ignore the tqdm warning about the progress bar going past max
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=TqdmWarning)
 
-        result = benchmark.query(config)
+        with tqdm(desc=f"{problem.name}", total=problem.budget.budget) as pbar:
+            while not budget_tracker.should_stop():
+                config = opt.ask()
+                result = benchmark.query(config)
+                opt.tell(result)
 
-        tell_start = time.time()
-        opt.tell(result)
-        time.time() - tell_start
+                history.add(result)
+                used_budget = budget_tracker.update(result=result, problem=problem)
+                pbar.update(used_budget)
 
-        history.add(result)
-        budget_tracker.update(result=result, problem=problem)
+    report = Problem.Report(problem=problem, history=history)
+    if save:
+        logger.info(f"Saving {problem.name} at {path}")
+        report.save(path=df_path)
+        loaded = Problem.Report.from_df(df=pd.read_parquet(df_path), problem=problem)
+        pd.testing.assert_frame_equal(loaded.df(), report.df())
 
-    return Problem.Report(problem=problem, history=history)
+    return report

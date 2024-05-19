@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeAlias
 
@@ -73,7 +73,7 @@ class BenchmarkDescription:
             | list[OptWithHps | type[Optimizer]]
         ),
         budget: BudgetType | int | float,
-        seeds: int | list[int],
+        seeds: int | Iterable[int],
         fidelities: int = 0,
         objectives: int = 1,
         costs: int = 0,
