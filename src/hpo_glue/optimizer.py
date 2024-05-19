@@ -5,6 +5,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 
 if TYPE_CHECKING:
+    from ConfigSpace import ConfigurationSpace
+
+    from hpo_glue.config import Config
     from hpo_glue.problem import Problem
     from hpo_glue.query import Query
     from hpo_glue.result import Result
@@ -16,23 +19,20 @@ class Optimizer(ABC):
     name: ClassVar[str]
     """The name of the optimizer"""
 
-    supports_multiobjective: ClassVar[bool] = False
-    """Whether the optimizer supports multi-objective"""
+    support: ClassVar[Problem.Support]
+    """What kind of problems the optimizer supports"""
 
-    supports_multifidelity: ClassVar[bool] = False
-    """Whether the optimizer supports multi-fidelity"""
-
-    supports_manyfidelity: ClassVar[bool] = False
-    """Whether the optimizer supports many fidelities"""
-
-    supports_tabular: ClassVar[bool] = False
-    """Whether the optimizer supports tabular benchmarks"""
+    minimize_only: ClassVar[bool]
+    """Whether the optimizer only supports minimization, in which
+    case the report results to the optimizer will be negated for it.
+    """
 
     @abstractmethod
     def __init__(
         self,
         *,
         problem: Problem,
+        config_space: list[Config] | ConfigurationSpace,
         working_directory: Path,
         **optimizer_kwargs: Any,
     ) -> None:
@@ -40,6 +40,7 @@ class Optimizer(ABC):
 
         Args:
             problem: The problem to optimize over
+            config_space: The configuration space to optimize over
             working_directory: The directory to save the optimizer's state
             optimizer_kwargs: Any additional hyperparameters for the optimizer
         """

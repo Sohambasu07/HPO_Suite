@@ -6,26 +6,26 @@ from typing import Any
 
 import pandas as pd
 
-from hpo_glue.result import Result
+from hpo_glue.evaluation import Evaluation
 
 
 @dataclass
 class History:
     """Collects the history of a run."""
 
-    results: list[Result] = field(default_factory=list)
+    evaluations: list[Evaluation] = field(default_factory=list)
 
-    def add(self, result: Result) -> None:
+    def add(self, result: Evaluation) -> None:
         """Add a result to the history."""
-        self.results.append(result)
+        self.evaluations.append(result)
 
     def df(self) -> pd.DataFrame:
         """Return the history as a pandas DataFrame."""
-        return pd.concat([res.series() for res in self.results], axis=1).T.convert_dtypes()
+        return pd.concat([res.series() for res in self.evaluations], axis=1).T.convert_dtypes()
 
     @classmethod
     def from_df(cls, df: pd.DataFrame) -> History:
-        return History([Result.from_series(row) for _, row in df.iterrows()])
+        return History([Evaluation.from_series(row) for _, row in df.iterrows()])
 
     def _save(
         self,

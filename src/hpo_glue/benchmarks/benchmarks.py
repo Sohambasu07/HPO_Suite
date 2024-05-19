@@ -1,49 +1,33 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from hpo_glue.benchmark import Benchmark, BenchmarkFactory
+    from hpo_glue.benchmark import BenchmarkDescription
 
 
-BENCHMARK_FACTORIES: dict[str, BenchmarkFactory] = {}
+BENCHMARKS: dict[str, BenchmarkDescription] = {}
 
 logger = logging.getLogger(__name__)
 
 
 try:
-    from hpo_glue.benchmarks.mfp_bench import _get_benchmark_factories
+    from hpo_glue.benchmarks.mfp_bench import mfpbench_benchmarks
 
-    BENCHMARK_FACTORIES.update({b.unique_name: b for b in _get_benchmark_factories()})
-except ImportError as e:
-    raise e
+    for desc in mfpbench_benchmarks():
+        BENCHMARKS[desc.name] = desc
+
+except ImportError:
     logger.info("Could not import mfpbench, skipping benchmarks from mfpbench")
 
 
-def get_benchmark_factory(name: str) -> BenchmarkFactory:
-    """Entry point of the repo to get a benchmark."""
-    factory = BENCHMARK_FACTORIES.get(name)
-    if factory is None:
-        raise ValueError(f"Unknown benchmark {name}")
-
-    return factory
-
-
-def get_benchmark(name: str, **kwargs: Any) -> Benchmark:
+def get_benchmark(name: str) -> BenchmarkDescription:
     """Get a benchmark by name."""
-    factory = get_benchmark_factory(name)
-    return factory(**kwargs)
-
-
-def all_benchmarks() -> dict[str, BenchmarkFactory]:
-    """List all available benchmarks."""
-    return dict(BENCHMARK_FACTORIES)
+    return BENCHMARKS[name]
 
 
 __all__ = [
-    "BENCHMARK_FACTORIES",
     "get_benchmark",
-    "get_benchmark_factory",
-    "benchmarks",
+    "BENCHMARKS",
 ]

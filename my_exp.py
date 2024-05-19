@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from hpo_glue import all_benchmarks
+from hpo_glue import BENCHMARKS
 
-for _k, _v in all_benchmarks().items():
-    print(_k, _v)  # noqa: T201
-    _v()
+for name, desc in BENCHMARKS.items():
+    print(name, desc)  # noqa: T201

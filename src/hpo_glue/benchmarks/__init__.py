@@ -1,13 +1,9 @@
 from hpo_glue.benchmarks.benchmarks import (
-    BENCHMARK_FACTORIES,
-    all_benchmarks,
+    BENCHMARKS,
     get_benchmark,
-    get_benchmark_factory,
 )
 
 __all__ = [
-    "BENCHMARK_FACTORIES",
+    "BENCHMARKS",
     "get_benchmark",
-    "all_benchmarks",
-    "get_benchmark_factory",
 ]

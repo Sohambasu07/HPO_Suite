@@ -18,10 +18,21 @@ class Query:
     fidelity: int | float | None
     """ What fidelity to evaluate at """
 
+    optimizer_info: Any | None = None
+    """Any optimizer specific info required across ask and tell"""
+
     @property
     def config_id(self) -> str:
         """The id of the config."""
         return self.config.id
+
+    @property
+    def query_id(self) -> str:
+        """The id of the query."""
+        if self.fidelity is None:
+            return self.config.id
+
+        return f"{self.config.id}-{self.fidelity}"
 
     @property
     def config_values(self) -> dict[str, Any]:

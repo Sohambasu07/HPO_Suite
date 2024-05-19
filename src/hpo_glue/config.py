@@ -12,7 +12,7 @@ class Config(Mapping[str, Any]):
     """A configuration to evaluate."""
 
     id: str
-    """ Some unique identifier """
+    """Some unique identifier"""
 
     values: dict[str, Any]
     """ The actual config values to evaluate """

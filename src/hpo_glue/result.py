@@ -11,20 +11,28 @@ if TYPE_CHECKING:
     from hpo_glue.config import Config
 
 
-@dataclass(frozen=True)
+@dataclass(kw_only=True)
 class Result:
     """The result of a query from a benchmark."""
 
     query: Query
     """The query that generated this result"""
 
-    result: dict[str, Any]
+    values: dict[str, Any]
     """Everything returned by the benchmark for a given query."""
+
+    previous_result: Result | None = None
+    """The previous result of a query."""
 
     @property
     def config_id(self) -> str:
         """The id of the config."""
-        return self.query.config.id
+        return self.query.config_id
+
+    @property
+    def query_id(self) -> str:
+        """The id of the config."""
+        return self.query.query_id
 
     @property
     def config(self) -> Config:
@@ -46,7 +54,7 @@ class Result:
         return pd.Series(
             {
                 **self.query.series(),
-                **{f"result.{k}": v for k, v in self.result.items()},
+                **{f"result.{k}": v for k, v in self.values.items()},
             }
         )
 
@@ -55,5 +63,5 @@ class Result:
         """Create a Result from a pandas Series."""
         return Result(
             query=Query.from_series(series.filter(like="query.")),
-            result=series.filter(like="result.").to_dict(),
+            values=series.filter(like="result.").to_dict(),
         )

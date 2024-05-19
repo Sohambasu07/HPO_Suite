@@ -6,12 +6,10 @@ from pathlib import Path
 import mfpbench
 
 
-def test_mfpbench(data_dir: Path,
-                  benchmark_name: str,
-                  task_id: str,
-                  fidelity: int | None = None) -> None:
-
-    if ("lcbench" in benchmark_name or benchmark_name == "jahs"):
+def test_mfpbench(
+    data_dir: Path, benchmark_name: str, task_id: str, fidelity: int | None = None
+) -> None:
+    if "lcbench" in benchmark_name or benchmark_name == "jahs":
         bench = mfpbench.get(benchmark_name, task_id=task_id, datadir=data_dir)
     else:
         bench = mfpbench.get(benchmark_name, datadir=data_dir)

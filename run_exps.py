@@ -8,7 +8,7 @@ from typing import Literal
 import yaml
 
 from hpo_glue.benchmarks.benchmarks import get_benchmark
-from hpo_glue.glu import GLUE, Experiment, Problem, ProblemReport
+from hpo_glue.glu import GLUE, Experiment, Problem
 
 
 def run_exps(
@@ -20,7 +20,7 @@ def run_exps(
     exp_config: Path,
     save_dir: Path,
     num_workers: int = 1,
-) -> ProblemReport:
+) -> Problem.Report:
     """Perform GLUE experiments."""
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
@@ -75,7 +75,7 @@ def run_exps(
                     ],
                     objective=benchmark.default_objective,
                     minimize=benchmark.minimize_default,
-                    fidelity_key=benchmark.fidelity_keys,  # defaults to fidelity_keys[0] in case of a list
+                    fidelity_key=benchmark.fidelities,  # defaults to fidelity_keys[0] in case of a list
                 )
 
     # Creating an Experiment
