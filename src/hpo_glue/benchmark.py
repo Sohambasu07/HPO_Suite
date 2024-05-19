@@ -1,23 +1,38 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, TypeAlias
+from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeAlias
 
 import pandas as pd
 
 from hpo_glue.config import Config
+from hpo_glue.optimizer import Optimizer
 from hpo_glue.result import Result
 
 if TYPE_CHECKING:
     from ConfigSpace import ConfigurationSpace
 
+    from hpo_glue.budget import BudgetType
     from hpo_glue.fidelity import Fidelity
     from hpo_glue.measure import Measure
+    from hpo_glue.problem import Problem
     from hpo_glue.query import Query
 
+    class TrajectoryF(Protocol):
+        def __call__(
+            self,
+            *,
+            query: Query,
+            frm: int | float | None = None,
+            to: int | float | None = None,
+        ) -> pd.DataFrame: ...
+
+
 logger = logging.getLogger(__name__)
+
+OptWithHps: TypeAlias = tuple[type[Optimizer], Mapping[str, Any]]
 
 
 @dataclass(kw_only=True)
@@ -48,6 +63,63 @@ class BenchmarkDescription:
     is_tabular: bool = False
     """Whether the benchmark is tabular."""
 
+    def generate_problems(
+        self,
+        *,
+        optimizers: (
+            type[Optimizer]
+            | OptWithHps
+            | list[type[Optimizer]]
+            | list[OptWithHps | type[Optimizer]]
+        ),
+        budget: BudgetType | int | float,
+        seeds: int | list[int],
+        fidelities: int = 0,
+        objectives: int = 1,
+        costs: int = 0,
+        multi_objective_generation: Literal["mix_metric_cost", "metric_only"] = "mix_metric_cost",
+        on_error: Literal["warn", "raise", "ignore"] = "warn",
+    ) -> Iterator[Problem]:
+        """Generate a set of problems for the given optimizer and benchmark.
+
+        If there is some incompatibility between the optimizer, the benchmark and the requested
+        amount of objectives, fidelities or costs, a ValueError will be raised.
+
+        Args:
+            optimizers: The optimizer class to generate problems for.
+                Can provide a single optimizer or a list of optimizers.
+                If you wish to provide hyperparameters for the optimizer, provide a tuple with the
+                optimizer.
+            benchmark: The benchmark to generate problems for.
+                Can provide a single benchmark or a list of benchmarks.
+            budget: The budget to use for the problems. Budget defaults to a n_trials budget
+                where when multifidelty is enabled, fractional budget can be used and 1 is
+                equivalent a full fidelity trial.
+            seeds: The seed or seeds to use for the problems.
+            fidelities: The number of fidelities to generate problems for.
+            objectives: The number of objectives to generate problems for.
+            costs: The number of costs to generate problems for.
+            multi_objective_generation: The method to generate multiple objectives.
+            on_error: The method to handle errors.
+
+                * "warn": Log a warning and continue.
+                * "raise": Raise an error.
+                * "ignore": Ignore the error and continue.
+        """
+        from hpo_glue._problem_generators import _generate_problem_set
+
+        yield from _generate_problem_set(
+            optimizers=optimizers,
+            benchmarks=self,
+            budget=budget,
+            seeds=seeds,
+            fidelities=fidelities,
+            objectives=objectives,
+            costs=costs,
+            multi_objective_generation=multi_objective_generation,
+            on_error=on_error,
+        )
+
 
 @dataclass(kw_only=True)
 class SurrogateBenchmark:
@@ -64,6 +136,68 @@ class SurrogateBenchmark:
 
     query: Callable[[Query], Result]
     """The query function for the benchmark."""
+
+    trajectory_f: TrajectoryF | None = None
+    """The trajectory function for the benchmark, if one exists.
+
+    This function should return a DataFrame with the trajectory of the query up
+    to the given fidelity. The index should be the fidelity parameter with the
+    columns as the values.
+
+    ```
+    def __call__(
+        self,
+        *,
+        query: Query,
+        frm: int | float | None = None,
+        to: int | float | None = None,
+    ) -> pd.DataFrame:
+        ...
+    ```
+
+    If not provided, the query will be called repeatedly to generate this.
+    """
+
+    def trajectory(
+        self,
+        *,
+        query: Query,
+        frm: int | float | None = None,
+        to: int | float | None = None,
+    ) -> pd.DataFrame:
+        if self.trajectory_f is not None:
+            return self.trajectory_f(query=query, frm=frm, to=to)
+
+        assert isinstance(query.fidelity, tuple)
+        assert self.desc.fidelities is not None
+
+        fid_name, fid_value = query.fidelity
+        fid = self.desc.fidelities[fid_name]
+        frm = frm if frm is not None else fid.min
+        to = to if to is not None else fid_value
+
+        index: list[int] | list[float] = []
+        results: list[Result] = []
+        for val in iter(fid):
+            if val < frm:
+                continue
+
+            if val > to:
+                break
+
+            index.append(val)
+            result = self.query(query.with_fidelity((fid_name, val)))
+            results.append(result)
+
+        # Return in trajectory format
+        # fid_name    **results
+        # 0         | . | . | ...
+        # 1         | . | . | ...
+        # ...
+        return pd.DataFrame.from_records(
+            [result.values for result in results],
+            index=pd.Index(index, name=fid_name),
+        )
 
 
 class TabularBenchmark:
@@ -255,6 +389,36 @@ class TabularBenchmark:
             values=retrieved_results.to_dict(),
             fidelity=fidelities_retrieved,
         )
+
+    def trajectory(
+        self,
+        *,
+        query: Query,
+        frm: int | float | None = None,
+        to: int | float | None = None,
+    ) -> pd.DataFrame:
+        """Query the benchmark for a result."""
+        assert isinstance(query.fidelity, tuple)
+        fid_name, fid_value = query.fidelity
+        if self.fidelity_keys is None:
+            raise ValueError("No fidelities to query for this benchmark!")
+
+        if self.fidelity_keys != [fid_name]:
+            raise NotImplementedError(
+                f"Can't get trajectory for {fid_name=} when more than one"
+                f" fidelity {self.fidelity_keys=}!",
+            )
+
+        assert self.desc.fidelities is not None
+        frm = frm if frm is not None else self.desc.fidelities[fid_name].min
+        to = to if to is not None else fid_value
+
+        # Return in trajectory format
+        # fid_name    **results
+        # 0         | . | . | ...
+        # 1         | . | . | ...
+        # ...
+        return self.table[self.result_keys].loc[query.config_id, frm:to].droplevel(0).sort_index()
 
 
 # NOTE(eddiebergman): Not using a base class as we really don't expect to need

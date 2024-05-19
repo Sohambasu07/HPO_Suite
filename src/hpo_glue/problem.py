@@ -1,25 +1,26 @@
 from __future__ import annotations
 
 import logging
-import shutil
-from collections.abc import Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, TypeAlias
 
 import pandas as pd
 
-from hpo_glue.benchmark import BenchmarkDescription, SurrogateBenchmark, TabularBenchmark
 from hpo_glue.history import History
+from hpo_glue.optimizer import Optimizer
 
 if TYPE_CHECKING:
+    from hpo_glue.benchmark import BenchmarkDescription
     from hpo_glue.budget import BudgetType
     from hpo_glue.fidelity import Fidelity
     from hpo_glue.measure import Measure
-    from hpo_glue.optimizer import Optimizer
 
 logger = logging.getLogger(__name__)
+
+OptWithHps: TypeAlias = tuple[type[Optimizer], Mapping[str, Any]]
 
 
 class ProblemState(str, Enum):
@@ -74,11 +75,8 @@ class Problem:
     optimizer: type[Optimizer]
     """The optimizer to use for this problem statement"""
 
-    optimizer_hyperparameters: dict[str, Any] = field(default_factory=dict)
+    optimizer_hyperparameters: Mapping[str, Any] = field(default_factory=dict)
     """The hyperparameters to use for the optimizer"""
-
-    optimizer_output_dir: Path = field(default=Path("optimizer_cache"))
-    """Path for optimizer output"""
 
     name: str = field(init=False)
     """The name of the problem statement.
@@ -98,8 +96,8 @@ class Problem:
     is_manyfidelity: bool = field(init=False)
     """Whether the problem has many fidelities"""
 
-    relative_optimizer_path: Path = field(init=False)
-    """The unique path for this problem statement"""
+    supports_trajectory: bool = field(init=False)
+    """Whether the problem setup allows for trajectories to be queried."""
 
     started_flag_path: Path = field(init=False)
     """The path to the started flag"""
@@ -110,34 +108,31 @@ class Problem:
     success_flag_path: Path = field(init=False)
     """The path to the finished flag"""
 
-    cache_dir: Path = field(init=False)
-    """The path to the optimizer cache"""
-
     def __post_init__(self):
-        self.is_tabular: bool
-        match self.benchmark:
-            case TabularBenchmark():
-                self.is_tabular = True
-            case SurrogateBenchmark():
-                self.is_tabular = False
-            case _:
-                raise TypeError("Benchmark must be a TabularBenchmark or SurrogateBenchmark")
-
+        self.is_tabular = self.benchmark.is_tabular
         self.is_manyfidelity: bool
         self.is_multifidelity: bool
+        self.supports_trajectory: bool
         match self.fidelity:
             case None:
                 self.is_multifidelity = False
                 self.is_manyfidelity = False
-            case tuple():
+                self.supports_trajectory = False
+            case (_name, _fidelity):
                 self.is_multifidelity = True
                 self.is_manyfidelity = False
+                if _fidelity.supports_continuation:
+                    self.supports_trajectory = True
+                else:
+                    self.supports_trajectory = False
+
             case Mapping():
                 if len(self.fidelity) == 1:
                     raise ValueError("Single fidelity should be a tuple, not a mapping")
 
                 self.is_multifidelity = False
                 self.is_manyfidelity = True
+                self.supports_trajectory = False
             case _:
                 raise TypeError("Fidelity must be a tuple (name, fidelity) or a mapping")
 
@@ -171,18 +166,9 @@ class Problem:
         }
         self.name = "_".join(f"{k}={v}" for k, v in name_parts.items())
         self.path = Path(*[f"{k}={v}" for k, v in name_parts.items()])
-
-        self.cache_dir = self.optimizer_output_dir / self.relative_optimizer_path
-        self.started_flag_path = (
-            self.optimizer_output_dir / self.relative_optimizer_path / "started.flag"
-        )
-        self.crashed_flag_path = (
-            self.optimizer_output_dir / self.relative_optimizer_path / "crashed.flag"
-        )
-        self.success_flag_path = (
-            self.optimizer_output_dir / self.relative_optimizer_path / "success.flag"
-        )
-
+        self.started_flag_path = self.path / "started.flag"
+        self.crashed_flag_path = self.path / "crashed.flag"
+        self.success_flag_path = self.path / "success.flag"
         self.optimizer.support.check_opt_support(who=self.optimizer.name, problem=self)
 
     def as_dict(self) -> dict[str, Any]:
@@ -202,25 +188,80 @@ class Problem:
 
         return ProblemState.pending
 
-    def run(self, *, overwrite: bool = False) -> Problem.Report:
-        """Run the problem."""
-        if overwrite:
-            logger.info(f"Overwriting {self.name} as `overwrite=True` was set.")
-            if self.cache_dir.exists():
-                try:
-                    shutil.rmtree(self.cache_dir)
-                except Exception as e:
-                    logger.exception(e)
-                    logger.error(f"Error deleting {self.cache_dir}: {e}")
-        elif self.cache_dir.exists():
-            raise FileExistsError(
-                f"Optimizer cache already exists at {self.cache_dir}."
-                " Set `overwrite=True` to overwrite.",
-            )
+    def run(
+        self,
+        *,
+        overwrite: bool = False,
+        expdir: Path | str = "hpo-glue-output",
+    ) -> Problem.Report:
+        """Run the problem.
 
+        Args:
+            overwrite: Whether to overwrite the results if they already exist.
+            expdir: The directory to store the results in.
+        """
         from hpo_glue._run import run_problem
 
-        return run_problem.run(problem=self)
+        return run_problem.run(problem=self, expdir=expdir, overwrite=overwrite)
+
+    @classmethod
+    def generate(
+        cls,
+        optimizers: (
+            type[Optimizer]
+            | OptWithHps
+            | list[type[Optimizer]]
+            | list[OptWithHps | type[Optimizer]]
+        ),
+        benchmarks: BenchmarkDescription | Iterable[BenchmarkDescription],
+        *,
+        budget: BudgetType | int | float,
+        seeds: int | Iterable[int],
+        fidelities: int = 0,
+        objectives: int = 1,
+        costs: int = 0,
+        multi_objective_generation: Literal["mix_metric_cost", "metric_only"] = "mix_metric_cost",
+        on_error: Literal["warn", "raise", "ignore"] = "warn",
+    ) -> Iterator[Problem]:
+        """Generate a set of problems for the given optimizer and benchmark.
+
+        If there is some incompatibility between the optimizer, the benchmark and the requested
+        amount of objectives, fidelities or costs, a ValueError will be raised.
+
+        Args:
+            optimizer: The optimizer class to generate problems for.
+                Can provide a single optimizer or a list of optimizers.
+                If you wish to provide hyperparameters for the optimizer, provide a tuple with the
+                optimizer.
+            benchmark: The benchmark to generate problems for.
+                Can provide a single benchmark or a list of benchmarks.
+            budget: The budget to use for the problems. Budget defaults to a n_trials budget
+                where when multifidelty is enabled, fractional budget can be used and 1 is
+                equivalent a full fidelity trial.
+            seeds: The seed or seeds to use for the problems.
+            fidelities: The number of fidelities to generate problems for.
+            objectives: The number of objectives to generate problems for.
+            costs: The number of costs to generate problems for.
+            multi_objective_generation: The method to generate multiple objectives.
+            on_error: The method to handle errors.
+
+                * "warn": Log a warning and continue.
+                * "raise": Raise an error.
+                * "ignore": Ignore the error and continue.
+        """
+        from hpo_glue._problem_generators import _generate_problem_set
+
+        yield from _generate_problem_set(
+            optimizers=optimizers,
+            benchmarks=benchmarks,
+            budget=budget,
+            seeds=seeds,
+            fidelities=fidelities,
+            objectives=objectives,
+            costs=costs,
+            multi_objective_generation=multi_objective_generation,
+            on_error=on_error,
+        )
 
     @dataclass(kw_only=True)
     class Support:

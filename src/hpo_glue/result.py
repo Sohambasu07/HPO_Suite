@@ -25,7 +25,18 @@ class Result:
     """
 
     values: dict[str, Any]
-    """Everything returned by the benchmark for a given query."""
+    """Everything returned by the benchmark for a given query at the fideltiy."""
+
+    trajectory: pd.DataFrame | None = None
+    """If given, the trajectory of the query up to the given fidelity.
+
+    This will only provided if:
+    * The problem says it should be provided.
+    * There is only a single fidelity parameter.
+
+    It will be multi-indexed, with the multi indexing consiting of the
+    config id and the fidelity.
+    """
 
     previous_result: Result | None = None
     """The previous result of a query."""
@@ -65,10 +76,10 @@ class Result:
             case None:
                 return pd.Series(d)
             case (name, value):
-                return pd.Series({**d, f"fidelilty.result.{name}": value})
+                return pd.Series({**d, f"result.fidelity.{name}": value})
             case Mapping():
                 return pd.Series(
-                    {**d, **{f"fidelity.result.{k}": v for k, v in self.fidelity.items()}}
+                    {**d, **{f"result.fidelity.{k}": v for k, v in self.fidelity.items()}}
                 )
             case _:
                 raise ValueError(f"Unexpected fidelity type {self.fidelity}")

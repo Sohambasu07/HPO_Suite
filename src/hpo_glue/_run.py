@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import logging
+import shutil
 import time
+from pathlib import Path
 
 from hpo_glue.history import History
 from hpo_glue.problem import Problem
@@ -20,9 +22,27 @@ logger = logging.getLogger(__name__)
 # >   decision = opt.tell(result)
 # >   if decision == "stop":
 # >         break
-def run_problem(problem: Problem) -> Problem.Report:
+def run_problem(
+    problem: Problem,
+    *,
+    expdir: Path | str = "hpo-glue-output",
+    overwrite: bool = False,
+) -> Problem.Report:
     """Runs an optimizer on a benchmark, returning a report."""
-    problem.cache_dir.mkdir(parents=True, exist_ok=True)
+    path = Path(expdir) / problem.path
+    if overwrite:
+        logger.info(f"Overwriting {problem.name} at {path} as `overwrite=True` was set.")
+        if path.exists():
+            try:
+                shutil.rmtree(path)
+            except Exception as e:
+                logger.exception(e)
+                logger.error(f"Error deleting {path}: {e}")
+    elif path.exists():
+        raise FileExistsError(
+            f"Output already exists at {path}." " Set `overwrite=True` to overwrite.",
+        )
+    problem.path.mkdir(parents=True, exist_ok=True)
 
     benchmark = problem.benchmark.load(problem.benchmark)
 
@@ -30,7 +50,7 @@ def run_problem(problem: Problem) -> Problem.Report:
 
     opt = problem.optimizer(
         problem=problem,
-        working_directory=problem.cache_dir / "optimizer_dir",
+        working_directory=path / "optimizer_dir",
         config_space=benchmark.config_space,
         seed=problem.seed,
         **problem.optimizer_hyperparameters,

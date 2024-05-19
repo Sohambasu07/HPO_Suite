@@ -30,7 +30,7 @@ class Config(Mapping[str, Any]):
         """Return the config as a pandas Series."""
         return pd.Series(
             {
-                **{f"config.{k}": v for k, v in self.values.items()},
+                **{f"config.value.{k}": v for k, v in self.values.items()},
                 "config.id": self.id,
             }
         )
@@ -40,5 +40,8 @@ class Config(Mapping[str, Any]):
         """Create a Config from a pandas Series."""
         return Config(
             id=series["config.id"],  # type: ignore
-            values={k.split("config.")[1]: v for k, v in series.filter(like="config.").items()},  # type: ignore
+            values={
+                k.split("config.value.")[1]: v  # type: ignore
+                for k, v in series.filter(like="config.value.").items()
+            },
         )
