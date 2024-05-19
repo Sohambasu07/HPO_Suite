@@ -74,7 +74,10 @@ class SMAC_Optimizer(Optimizer):
                 fidelity = None
             case float() | int():
                 assert self._fidelity is not None
-                fidelity = int(fidelity) if self._fidelity.kind is int else fidelity
+                assert isinstance(self.problem.fidelity, tuple)
+                fidelity_value = int(fidelity) if self._fidelity.kind is int else fidelity
+                fidelity_name = self.problem.fidelity[0]
+                fidelity = (fidelity_name, fidelity_value)
             case _:
                 raise NotImplementedError("Unexpected return type for SMAC budget!")
 
@@ -116,9 +119,9 @@ class SMAC_BO(SMAC_Optimizer):
 
     name = "SMAC_BO"
     support = Problem.Support(
-        fidelities=False,
-        objectives="many",
-        cost_awareness=False,
+        fidelities=(None,),
+        objectives=("single", "many"),
+        cost_awareness=(None,),
         tabular=False,
     )
 
@@ -194,9 +197,9 @@ class SMAC_Hyperband(SMAC_Optimizer):
 
     name = "SMAC-Hyperband"
     support = Problem.Support(
-        fidelities="single",
-        objectives="many",
-        cost_awareness=False,
+        fidelities=("single",),
+        objectives=("single", "many"),
+        cost_awareness=(None,),
         tabular=False,
     )
 

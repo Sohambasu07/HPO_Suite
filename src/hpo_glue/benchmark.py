@@ -1,179 +1,151 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
-from dataclasses import dataclass, field
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, TypeAlias
+
+import pandas as pd
 
 from hpo_glue.config import Config
 from hpo_glue.result import Result
 
 if TYPE_CHECKING:
-    import pandas as pd
     from ConfigSpace import ConfigurationSpace
 
+    from hpo_glue.fidelity import Fidelity
+    from hpo_glue.measure import Measure
     from hpo_glue.query import Query
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class BenchmarkFactory:
-    f: Callable[..., Benchmark]
-    unique_name: str
-    kwargs: dict[str, Any] = field(default_factory=dict)
+@dataclass(kw_only=True)
+class BenchmarkDescription:
+    """Describes a benchmark without loading it all in."""
+
+    name: str
+    """Unique name of the benchmark."""
+
+    load: Callable[[BenchmarkDescription], Benchmark]
+    """Function to load the benchmark."""
+
+    metrics: Mapping[str, Measure]
+    """All the metrics that the benchmark supports."""
+
+    test_metrics: Mapping[str, Measure] | None = None
+    """All the test metrics that the benchmark supports."""
+
+    costs: Mapping[str, Measure] | None = None
+    """All the costs that the benchmark supports."""
+
+    fidelities: Mapping[str, Fidelity] | None = None
+    """All the fidelities that the benchmark supports."""
 
     has_conditionals: bool = False
-    supports_multifidelity: bool = False
-    supports_multiobjective: bool = False
-    supports_manyfidelity: bool = False
+    """Whether the benchmark has conditionals."""
+
     is_tabular: bool = False
-
-    def __call__(self, **kwargs: Any) -> Benchmark:
-        return self.f(**{**self.kwargs, **kwargs})
+    """Whether the benchmark is tabular."""
 
 
+@dataclass(kw_only=True)
 class SurrogateBenchmark:
     """Defines the interface for a surrogate benchmark."""
 
-    name: str
-    """ The name of the benchmark """
+    desc: BenchmarkDescription
+    """The description of the benchmark."""
 
     config_space: ConfigurationSpace
     """ The configuration space for the benchmark """
 
-    result_keys: str | list[str]
-    """The key(s) in the benchmark that we want to consider as the results """
-
-    default_objective: str
-    """ Default objective to optimize """
-
-    default_fidelity: str | None
-    """Default fidelity to use."""
-
-    minimize_default: bool
-    """ Whether the default objective should be minimized """
-
-    fidelity_space: list[int] | list[float] | None
-    """All possible fidelities for the benchmark """
-
-    fidelity_keys: str | list[str] | None
-    """The key(s) in the benchmark that we want to consider as the fidelity """
-
-    query_function: Callable[[Query], Result]
-    """ The function to query the benchmark """
-
     benchmark: Any
-    """ The actual benchmark object """
+    """The wrapped benchmark object."""
 
-    time_budget: str | None
-    """ Time budget support:
-            str: time budget key
-            None: time budget not supported
-    """
-
-    def __init__(  # noqa: D107, PLR0913
-        self,
-        *,
-        name: str,
-        config_space: ConfigurationSpace,
-        result_keys: list[str],
-        default_objective: str,
-        minimize_default: bool,
-        query_function: Callable[[Query], Result],
-        benchmark: Any,
-        fidelity_keys: str | list[str] | None = None,
-        fidelity_space: list[int] | list[float] | None = None,
-        time_budget: str | None = None,
-    ) -> None:
-        self.name = name
-        self.config_space = config_space
-        self.result_keys = result_keys
-        self.default_objective = default_objective
-        self.minimize_default = minimize_default
-        self.fidelity_space = fidelity_space
-        self.fidelity_keys = fidelity_keys
-        self.query_function = query_function
-        self.benchmark = benchmark
-        self.time_budget = time_budget
-
-    def query(self, query: Query) -> Result:
-        """Query the benchmark for a result.
-
-        Args:
-            query: The query to the benchmark
-
-        Returns:
-            The result of the query
-        """
-        return self.query_function(query)
+    query: Callable[[Query], Result]
+    """The query function for the benchmark."""
 
 
 class TabularBenchmark:
     """Defines the interface for a tabular benchmark."""
 
-    name: str
-    """ The name of the benchmark """
+    desc: BenchmarkDescription
+    """The description of the benchmark."""
 
     table: pd.DataFrame
     """ The table holding all information """
 
     id_key: str
-    """ The key in the table that we want to use as the id """
+    """The key in the table that we want to use as the id."""
 
     config_space: list[Config]
     """ All possible configs for the benchmark """
 
-    result_keys: str | list[str]
-    """The key(s) in the benchmark that we want to consider as the results """
+    config_keys: list[str]
+    """The keys in the table to use as the config keys."""
 
-    default_objective: str
-    """Default objective to optimize """
+    result_keys: list[str]
+    """The keys in the table to use as the result keys.
 
-    default_fidelity: str | None
-    """Default fidelity to use."""
+    This is inferred from the `desc=`.
+    """
 
-    minimize_default: bool
-    """ Whether the default objective should be minimized """
-
-    fidelity_space: list[int] | list[float] | None
-    """ All possible fidelities for the benchmark """
-
-    fidelity_keys: str | list[str] | None
-    """The key(s) in the benchmark that we want to consider as the fidelity """
-
-    time_budget: str | None
-    """ Time budget support, None indicates not supported."""
-
-    def __init__(  # noqa: C901, D107, PLR0913
+    def __init__(
         self,
-        name: str,
-        table: pd.DataFrame,
         *,
+        desc: BenchmarkDescription,
+        table: pd.DataFrame,
         id_key: str,
         config_keys: list[str],
-        result_keys: list[str],
-        default_objective: str,
-        minimize_default: bool,
-        fidelity_keys: str | list[str] | None = None,
-        remove_constants: bool = False,
-        time_budget: str | None = None,
     ) -> None:
+        """Create a tabular benchmark.
+
+        The result and fidelity keys will be inferred from the `desc=`.
+
+        Args:
+            desc: The description of the benchmark.
+            table: The table holding all information.
+            id_key: The key in the table that we want to use as the id.
+            config_keys: The keys in the table that we want to use as the config.
+        """
         # Make sure we work with a clean slate, no issue with index.
         table = table.reset_index()
 
-        # Make sure all the keys they specified exist
-        if id_key not in table.columns:
-            raise ValueError(f"'{id_key=}' not in columns {table.columns}")
+        for key in config_keys:
+            if key not in table.columns:
+                raise KeyError(
+                    f"Config key '{key}' not in columns {table.columns}."
+                    "This is most likely from a misspecified BecnhmarkDescription for "
+                    f"{desc.name}.",
+                )
 
-        if fidelity_keys not in table.columns:
-            raise ValueError(f"'{fidelity_keys=}' not in columns {table.columns}")
+        result_keys = [
+            *desc.metrics.keys(),
+            *(desc.test_metrics.keys() if desc.test_metrics else []),
+            *(desc.costs.keys() if desc.costs else []),
+        ]
+        for key in result_keys:
+            if key not in table.columns:
+                raise KeyError(
+                    f"Result key '{key}' not in columns {table.columns}."
+                    "This is most likely from a misspecified BecnhmarkDescription for "
+                    f"{desc.name}.",
+                )
 
-        if not all(key in table.columns for key in result_keys):
-            raise ValueError(f"{result_keys=} not in columns {table.columns}")
-
-        if not all(key in table.columns for key in config_keys):
-            raise ValueError(f"{config_keys=} not in columns {table.columns}")
+        match desc.fidelities:
+            case None:
+                fidelity_keys = None
+            case Mapping():
+                fidelity_keys = list(desc.fidelities.keys())
+                for key in fidelity_keys:
+                    if key not in table.columns:
+                        raise KeyError(
+                            f"Fidelity key '{key}' not in columns {table.columns}."
+                            "This is most likely from a misspecified BecnhmarkDescription for "
+                            f"{desc.name}.",
+                        )
+            case _:
+                raise TypeError(f"{desc.fidelities=} not supported")
 
         # Make sure that the column `id` only exist if it's the `id_key`
         if "id" in table.columns and id_key != "id":
@@ -182,45 +154,21 @@ class TabularBenchmark:
                 " Please drop it or rename it.",
             )
 
-        # Remove constants from the table
-        if remove_constants:
-
-            def is_constant(_s: pd.Series) -> bool:
-                _arr = _s.to_numpy()
-                return bool((_arr == _arr[0]).all())
-
-            constant_cols = [
-                col
-                for col in table.columns
-                if is_constant(table[col])  # type: ignore
-            ]
-            table = table.drop(columns=constant_cols)  # type: ignore
-            config_keys = [k for k in config_keys if k not in constant_cols]
-
         # Remap their id column to `id`
         table = table.rename(columns={id_key: "id"})
 
-        # Index the table
-        match fidelity_keys:
-            case None:
-                index_cols: list[str] = ["id"]
-            case str():
-                index_cols = ["id", fidelity_keys]
-            case list():
-                index_cols = ["id", *fidelity_keys]
+        # We will create a multi-index for the table, done by the if and
+        # the remaining fidelity keys
+        _fid_cols = [] if fidelity_keys is None else fidelity_keys
 
         # Drop all the columns that are not relevant
-        relevant_cols: list[str] = [
-            *index_cols,
-            *result_keys,
-            *config_keys,
-        ]
+        relevant_cols: list[str] = ["id", *_fid_cols, *result_keys, *config_keys]
         table = table[relevant_cols]  # type: ignore
-        table = table.set_index(index_cols).sort_index()
+        table = table.set_index(["id", *_fid_cols]).sort_index()
 
         # We now have the following table
         #
-        #     id    fidelity | **metric, **config_values
+        #     id    fidelity | **metrics, **config_values
         #     0         0    |
         #               1    |
         #               2    |
@@ -228,71 +176,84 @@ class TabularBenchmark:
         #               1    |
         #               2    |
         #   ...
-
-        self.name = name
         self.table = table
         self.id_key = id_key
+        self.desc = desc
+        self.config_keys = config_keys
+        self.result_keys = result_keys
         self.fidelity_keys = fidelity_keys
-        self.config_keys = sorted(config_keys)
-        self.result_keys = sorted(result_keys)
-        self.default_objective = default_objective
-        self.minimize_default = minimize_default
-        self.time_budget = time_budget
-
-        # A list of all possible configs
         self.config_space = [
             Config(id=str(i), values=config)  # enforcing str for id
             for i, config in enumerate(
-                self.table[self.config_keys]
+                self.table[config_keys]
                 .drop_duplicates()
-                # Sorting is important to make sure it's always consistent
-                .sort_values(by=self.config_keys)
+                .sort_values(by=config_keys)  # Sorting to ensure table config order is consistent
                 .to_dict(orient="records"),
             )
         ]
 
-        match self.fidelity_keys:
-            case None:
-                self.fidelity_space = None
-                self.fidelity_range = None
-            case str():
-                # Make sure we have equidistance fidelities for all configs
-                fidelity_values = self.table.index.get_level_values(self.fidelity_keys)
-                fidelity_counts = fidelity_values.value_counts()
-                if not (fidelity_counts == fidelity_counts.iloc[0]).all():
-                    raise ValueError(f"{self.fidelity_keys=} not uniform. \n{fidelity_counts}")
-
-                sorted_fids = sorted(fidelity_values.unique())
-                start = sorted_fids[0]
-                end = sorted_fids[-1]
-
-                # Here we get all the unique configs
-                #     id    fidelity | **metric, **config_values
-                #     0         0    |
-                #     1         0    |
-                #   ...
-                self.fidelity_space = sorted_fids
-                self.fidelity_range = (start, end)
-            case list():
-                raise NotImplementedError("Many fidelities not yet supported")
-            case _:
-                raise TypeError(f"type of {self.fidelity_keys=} not supported")
-
     def query(self, query: Query) -> Result:
         """Query the benchmark for a result."""
+        # NOTE(eddiebergman):
+        # Some annoying logic here to basically be able to handle partially specified fidelties,
+        # even if it does not match the order of what the table has. In the case where a fidelity
+        # is not specified, we select ALL (slice(None)) for that fidelity. Later, we will just take
+        # the last row then. Important that we go in the order of `self.fidelity_keys`
+        ALL = slice(None)
+        fidelity_order = self.table.index.names[1:]
+
         match query.fidelity:
             case None:
-                result = self.table.loc[query.config_id]
-            case int() | float():
-                result = self.table.loc[(query.config_id, query.fidelity)]
-            case list():
-                raise NotImplementedError("Many fidelities not yet supported")
+                slices = {col: ALL for col in fidelity_order}
+            case (key, value):
+                assert self.fidelity_keys is not None
+                slices = {col: (value if key == col else ALL) for col in fidelity_order}
+            case Mapping():
+                assert self.fidelity_keys is not None
+                slices = {col: query.fidelity.get(col, ALL) for col in fidelity_order}
             case _:
-                raise TypeError(f"type of {query.fidelity=} not supported")
+                raise TypeError(f"type of {query.fidelity=} ({type(query.fidelity)}) supported")
+
+        result = self.table.loc[(query.config_id, *slices.values())]
+        row: pd.Series
+        match result:
+            case pd.Series():
+                # If it's a series, a row was uniquely specified, meaning that all
+                # of the fidelity values were specified.
+                retrieved_results = result[self.result_keys]
+                assert isinstance(retrieved_results, pd.Series)
+                unspecified_fids = {}
+            case pd.DataFrame():
+                # If it's a DataFrame, we have multiple rows, we take the last one,
+                # under the assumption that:
+                # 1. Larger fidelity values are what is requested.
+                # 2. The table is sorted by fidelity values.
+                retrieved_results = result[self.result_keys]
+
+                # Get the non-specified fidelity values
+                # We have to keep it as a dataframe using `[-1:]`
+                # for the moment so we can get the correct fidelity names and values.
+                row = result.iloc[-1:]
+                assert isinstance(row, pd.DataFrame)
+                assert len(row.index) == 1
+                unspecified_fids = dict(zip(row.index.names, row.index, strict=True))
+
+                retrieved_results = retrieved_results.iloc[-1]
+            case _:
+                raise TypeError(f"type of {result=} ({type(result)}) not supported")
+
+        match query.fidelity:
+            case None:
+                fidelities_retrieved = unspecified_fids
+            case (key, value):
+                fidelities_retrieved = {**unspecified_fids, key: value}
+            case Mapping():
+                fidelities_retrieved = {**unspecified_fids, **query.fidelity}
 
         return Result(
             query=query,
-            result=result.get(self.result_keys).to_dict(),
+            values=retrieved_results.to_dict(),
+            fidelity=fidelities_retrieved,
         )
 
 

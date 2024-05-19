@@ -88,9 +88,9 @@ class SyneTuneBO(SyneTuneOptimizer):
 
     name = "SyneTune-BO"
     support = Problem.Support(
-        fidelities=False,
-        objectives="single",
-        cost_awareness=False,
+        fidelities=(None,),
+        objectives=("single",),
+        cost_awareness=(None,),
         tabular=False,
     )
 
@@ -110,16 +110,37 @@ class SyneTuneBO(SyneTuneOptimizer):
             config_space: The configuration space.
             **kwargs: Additional arguments for the BayesianOptimization.
         """
+        match problem.fidelity:
+            case None:
+                pass
+            case tuple():
+                clsname = self.__class__.__name__
+                raise ValueError(f"{clsname} does not multi-fidelity spaces")
+            case Mapping():
+                clsname = self.__class__.__name__
+                raise NotImplementedError(f"{clsname} does not support many-fidelity")
+            case _:
+                raise TypeError("fidelity_space must be a list, dict or None")
+
+        match problem.cost:
+            case None:
+                pass
+            case tuple() | Mapping():
+                clsname = self.__class__.__name__
+                raise ValueError(f"{clsname} does not support cost-awareness")
+            case _:
+                raise TypeError("cost_awareness must be a list, dict or None")
+
         metric_name: str
         mode: Literal["min", "max"]
         match problem.objective:
+            case (name, metric):
+                metric_name = name
+                mode = "min" if metric.minimize else "max"
             case Mapping():
                 raise NotImplementedError(
                     "# TODO: Multiobjective not yet implemented for SyneTuneBO!"
                 )
-            case (name, metric):
-                metric_name = name
-                mode = "min" if metric.minimize else "max"
             case _:
                 raise TypeError("Objective must be a string or a list of strings")
 
@@ -131,15 +152,6 @@ class SyneTuneBO(SyneTuneOptimizer):
                 raise ValueError("SyneTuneBO does not support tabular benchmarks")
             case _:
                 raise TypeError("config_space must be of type ConfigSpace.ConfigurationSpace")
-
-        match problem.fidelity:
-            case None:
-                pass
-            case list() | dict():
-                clsname = self.__class__.__name__
-                raise ValueError(f"{clsname} does not support fidelity spaces")
-            case _:
-                raise TypeError("fidelity_space must be a list, dict or None")
 
         super().__init__(
             problem=problem,

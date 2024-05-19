@@ -36,9 +36,9 @@ class OptunaOptimizer(Optimizer):
 
     name = "Optuna"
     support = Problem.Support(
-        fidelities="single",
-        objectives="many",
-        cost_awareness=False,
+        fidelities=(None,),  # TODO: Implement fidelity support
+        objectives=("single", "many"),
+        cost_awareness=(None,),
         tabular=False,
     )
 
@@ -92,29 +92,47 @@ class OptunaOptimizer(Optimizer):
 
     @override
     def ask(self) -> Query:
-        trial = self.optimizer.ask(self._distributions)
-        # TODO(eddiebergman): Not sure if just using
-        # trial.number is enough in MF setting
-        name = f"trial_{trial.number}"
-        self._trial_lookup[name] = trial
-        return Query(
-            config=Config(id=name, values=trial.params),
-            fidelity=None,
-        )
+        match self.problem.fidelity:
+            case None:
+                trial = self.optimizer.ask(self._distributions)
+                name = f"trial_{trial.number}"
+                return Query(
+                    config=Config(id=name, values=trial.params),
+                    fidelity=None,
+                    optimizer_info=trial,
+                )
+            case tuple():
+                # TODO(eddiebergman): Not sure if just using
+                # trial.number is enough in MF setting
+                raise NotImplementedError("# TODO: Fidelity-aware not yet implemented for Optuna!")
+            case Mapping():
+                raise NotImplementedError("# TODO: Fidelity-aware not yet implemented for Optuna!")
+            case _:
+                raise TypeError("Fidelity must be None or a tuple!")
 
     @override
     def tell(self, result: Result) -> None:
-        original_trial = self._trial_lookup.pop(result.config.id)
         match self.problem.objective:
             case (name, _):
-                _values = result.full_results[name]
+                _values = result.values[name]
             case Mapping():
-                _values = [result.full_results[key] for key in self.problem.objective]
+                _values = [result.values[key] for key in self.problem.objective]
             case _:
                 raise TypeError("Objective must be a string or a list of strings!")
 
+        match self.problem.cost:
+            case None:
+                pass
+            case tuple():
+                raise NotImplementedError("# TODO: Cost-aware not yet implemented for Optuna!")
+            case Mapping():
+                raise NotImplementedError("# TODO: Cost-aware not yet implemented for Optuna!")
+            case _:
+                raise TypeError("Cost must be None or a mapping!")
+
+        assert isinstance(result.query.optimizer_info, optuna.trial.Trial)
         self.optimizer.tell(
-            trial=original_trial,
+            trial=result.query.optimizer_info,
             values=_values,
             state=optuna.trial.TrialState.COMPLETE,
             skip_if_finished=False,

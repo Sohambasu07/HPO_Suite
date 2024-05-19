@@ -40,5 +40,5 @@ class Config(Mapping[str, Any]):
         """Create a Config from a pandas Series."""
         return Config(
             id=series["config.id"],  # type: ignore
-            values={k.split("config.")[1]: v for k, v in series.items() if k.startswith("config.")},  # type: ignore
+            values={k.split("config.")[1]: v for k, v in series.filter(like="config.").items()},  # type: ignore
         )

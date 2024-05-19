@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -17,6 +18,11 @@ class Result:
 
     query: Query
     """The query that generated this result"""
+
+    fidelity: tuple[str, int | float] | Mapping[str, int | float] | None
+    """What fidelity the result is at, usually this will be the same as the query fidelity,
+    unless the benchmark has multiple fidelities.
+    """
 
     values: dict[str, Any]
     """Everything returned by the benchmark for a given query."""
@@ -40,8 +46,8 @@ class Result:
         return self.query.config
 
     @property
-    def fidelity(self) -> int | float | dict[str, int | float] | None:
-        """The fidelity."""
+    def query_fidelity(self) -> tuple[str, int | float] | Mapping[str, int | float] | None:
+        """The fidelity of the query."""
         return self.query.fidelity
 
     @property
@@ -51,17 +57,27 @@ class Result:
 
     def series(self) -> pd.Series:
         """Return the result as a pandas Series."""
-        return pd.Series(
-            {
-                **self.query.series(),
-                **{f"result.{k}": v for k, v in self.values.items()},
-            }
-        )
+        d = {
+            **self.query.series(),
+            **{f"result.value.{k}": v for k, v in self.values.items()},
+        }
+        match self.fidelity:
+            case None:
+                return pd.Series(d)
+            case (name, value):
+                return pd.Series({**d, f"fidelilty.result.{name}": value})
+            case Mapping():
+                return pd.Series(
+                    {**d, **{f"fidelity.result.{k}": v for k, v in self.fidelity.items()}}
+                )
+            case _:
+                raise ValueError(f"Unexpected fidelity type {self.fidelity}")
 
     @classmethod
     def from_series(cls, series: pd.Series) -> Result:
         """Create a Result from a pandas Series."""
         return Result(
             query=Query.from_series(series.filter(like="query.")),
-            values=series.filter(like="result.").to_dict(),
+            values=series.filter(like="result.value.").to_dict(),
+            fidelity=series.filter(like="result.fidelity.").to_dict(),
         )

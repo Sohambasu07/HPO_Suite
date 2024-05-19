@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -21,10 +22,12 @@ class RandomSearch(Optimizer):
 
     name = "RandomSearch"
 
+    # NOTE(eddiebergman): Random search doesn't directly use any of this
+    # information but we allow it to be used as it's a common baseline.
     support = Problem.Support(
-        fidelities=False,
-        objectives="many",
-        cost_awareness=False,
+        fidelities=(None, "single", "many"),
+        objectives=("single", "many"),
+        cost_awareness=(None, "single", "many"),
         tabular=False,
     )
 
@@ -65,7 +68,17 @@ class RandomSearch(Optimizer):
             case _:
                 raise TypeError("Config space must be a ConfigSpace or a list of Configs")
 
-        return Query(config=config, fidelity=None)
+        match self.problem.fidelity:
+            case None:
+                fidelity = None
+            case (name, fidelity):
+                fidelity = (name, fidelity.max)
+            case Mapping():
+                fidelity = {name: fidelity.max for name, fidelity in self.problem.fidelity.items()}
+            case _:
+                raise ValueError("Fidelity must be a string or a list of strings")
+
+        return Query(config=config, fidelity=fidelity)
 
     def tell(self, result: Result) -> None:
         """Tell the optimizer the result of the query."""

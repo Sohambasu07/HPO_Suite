@@ -64,7 +64,7 @@ def _get_surrogate_benchmark(
 def _mfpbench_surrogate_query_function(query: Query, benchmark: mfpbench.Benchmark) -> Result:
     return Result(
         query=query,
-        full_results=benchmark.query(query.config.values, at=query.fidelity).as_dict(),
+        values=benchmark.query(query.config.values, at=query.fidelity).as_dict(),
     )
 
 

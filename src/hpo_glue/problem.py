@@ -3,11 +3,10 @@ from __future__ import annotations
 import logging
 import shutil
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass, field, replace
+from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, TypeAlias
-from typing_extensions import Self
+from typing import TYPE_CHECKING, Any, Literal
 
 import pandas as pd
 
@@ -15,10 +14,10 @@ from hpo_glue.benchmark import BenchmarkDescription, SurrogateBenchmark, Tabular
 from hpo_glue.history import History
 
 if TYPE_CHECKING:
+    from hpo_glue.budget import BudgetType
     from hpo_glue.fidelity import Fidelity
     from hpo_glue.measure import Measure
     from hpo_glue.optimizer import Optimizer
-    from hpo_glue.result import Result
 
 logger = logging.getLogger(__name__)
 
@@ -30,136 +29,6 @@ class ProblemState(str, Enum):
     running = "running"
     crashed = "crashed"
     finished = "finished"
-
-
-@dataclass
-class TrialBudget:
-    """A budget for the number of trials to run."""
-
-    budget: int | float
-    """Total amount of budget allowed for the optimizer for this problem.
-
-    How this is interpreted is depending on fidelity type.
-
-    If the problem **does not** include a fidelity, then this is assumed
-    to be a black-box problem, and each fully complete trial counts as
-    1 towards the budget.
-
-    If the problem **does** include a **single** fidelity, then the fidelity
-    at which the trial was evaluated is taken as a fraction of the full fidelity
-    and added to the used budget. For example, 40 epochs of a fidelity that
-    maxes out at 100 epochs would count as 0.4 towards the budget.
-
-    If the problem **does** include **many** fidelities, then the fraction as calculated
-    for a single fidelity is applied to all fidelities, and then summed, normalized by
-    the total number of fidelities. For example, 40 epochs of a fidelity that maxes out
-    at 100 epochs and data percentage of 0.6 of a fidelity that maxes out at 1.0 would
-    equate to (0.4 + 0.6) / 2 = 0.5 towards the budget.
-    """
-
-    used_budget: float = 0.0
-
-    def calculate_used_budget(self, *, result: Result, problem: Problem) -> float:
-        """Calculate the used budget for a given result.
-
-        Args:
-            result: The result of the trial.
-            problem: The original problem statement.
-
-        Returns:
-            The amount of budget used for this result.
-        """
-        match problem.fidelity:
-            case None:
-                return 1
-            case (_, fidelity_desc):
-                assert isinstance(result.fidelity, int | float)
-                return fidelity_desc.normalize(result.fidelity)
-            case Mapping():
-                assert problem.benchmark.fidelities is not None
-                assert isinstance(result.fidelity, dict)
-
-                normed_fidelities = []
-                n_fidelities = len(result.fidelity)
-                for k, v in result.fidelity.items():
-                    fidelity_desc = problem.benchmark.fidelities[k]
-                    norm_fidelity = fidelity_desc.normalize(v)
-                    normed_fidelities.append(norm_fidelity)
-
-                return sum(normed_fidelities) / n_fidelities
-            case _:
-                raise TypeError("Fidelity must be None, str, or list[str]")
-
-    def update(self, *, result: Result, problem: Problem) -> None:
-        """Update the budget with the result of a trial.
-
-        Args:
-            result: The result of the trial.
-            problem: The original problem statement.
-        """
-        self.used_budget += self.calculate_used_budget(result=result, problem=problem)
-
-    def should_stop(self) -> bool:
-        """Check if the budget has been used up."""
-        return self.used_budget >= self.budget
-
-    @property
-    def path_str(self) -> str:
-        """Return a string representation of the budget."""
-        clsname = self.__class__.__name__
-        return f"{clsname}={self.budget}"
-
-    def clone(self) -> Self:
-        """Return a clone of the budget."""
-        return replace(self)
-
-
-@dataclass(kw_only=True)
-class CostBudget:
-    """A budget for the cost of the trials to run."""
-
-    budget: int | float
-
-    def __post_init__(self):
-        raise NotImplementedError("Cost budgets not yet supported")
-
-    def update(self, *, result: Result, problem: Problem) -> None:
-        """Update the budget with the result of a trial.
-
-        Args:
-            result: The result of the trial.
-            problem: The original problem statement.
-        """
-        raise NotImplementedError("Cost budgets not yet supported")
-
-    def should_stop(self) -> bool:
-        """Check if the budget has been used up."""
-        raise NotImplementedError("Cost budgets not yet supported")
-
-    def calculate_used_budget(self, *, result: Result, problem: Problem) -> float:
-        """Calculate the used budget for a given result.
-
-        Args:
-            result: The result of the trial.
-            problem: The original problem statement.
-
-        Returns:
-            The amount of budget used for this result.
-        """
-        raise NotImplementedError("Cost budgets not yet supported")
-
-    @property
-    def path_str(self) -> str:
-        """Return a string representation of the budget."""
-        clsname = self.__class__.__name__
-        return f"{clsname}={self.budget}"
-
-    def clone(self) -> Self:
-        """Return a clone of the budget."""
-        return replace(self)
-
-
-BudgetType: TypeAlias = TrialBudget | CostBudget
 
 
 @dataclass
@@ -248,11 +117,7 @@ class Problem:
         self.is_tabular: bool
         match self.benchmark:
             case TabularBenchmark():
-                if self.optimizer.tabular_support is False:
-                    raise ValueError(
-                        f"{self.optimizer.name} does not support tabular benchmarks! "
-                        f"{self.optimizer.name} and {self.benchmark.name} are not compatible.",
-                    )
+                self.is_tabular = True
             case SurrogateBenchmark():
                 self.is_tabular = False
             case _:
@@ -260,41 +125,16 @@ class Problem:
 
         self.is_manyfidelity: bool
         self.is_multifidelity: bool
-
         match self.fidelity:
             case None:
-                match self.optimizer.fidelity_support:
-                    case Support(required=True):
-                        raise ValueError(
-                            f"{self.optimizer.name} requires a fidelity but the problem"
-                            f" was specified without a fidelity!\n{self}"
-                        )
-                    case _:
-                        self.is_multifidelity = False
-                        self.is_manyfidelity = False
+                self.is_multifidelity = False
+                self.is_manyfidelity = False
             case tuple():
-                if self.optimizer.fidelity_support == Support.NO():
-                    raise ValueError(
-                        f"{self.optimizer.name} does not support fidelities but the problem"
-                        f" was specified with a fidelity!\n{self}"
-                    )
-                if not self.optimizer.supports_multifidelity:
-                    raise ValueError(
-                        f"{self.optimizer.name} does not support multi-fidelity but the problem"
-                        f" was specified with multi fidelity!\n{self}"
-                    )
-
                 self.is_multifidelity = True
                 self.is_manyfidelity = False
             case Mapping():
                 if len(self.fidelity) == 1:
                     raise ValueError("Single fidelity should be a tuple, not a mapping")
-
-                if not self.optimizer.supports_manyfidelity:
-                    raise ValueError(
-                        f"{self.optimizer.name} does not support many-fidelity but the problem"
-                        f" was specified with many fidelities!\n{self}"
-                    )
 
                 self.is_multifidelity = False
                 self.is_manyfidelity = True
@@ -310,12 +150,6 @@ class Problem:
             case Mapping():
                 if len(self.objective) == 1:
                     raise ValueError("Single objective should be a tuple, not a mapping")
-
-                if not self.optimizer.supports_multiobjective:
-                    raise ValueError(
-                        f"{self.optimizer.name} does not support multi-objective but the problem"
-                        f" was specified with multiple objectives!\n{self}"
-                    )
 
                 self.is_multiobjective = True
                 objective_str = ",".join(self.objective.keys())
@@ -348,6 +182,8 @@ class Problem:
         self.success_flag_path = (
             self.optimizer_output_dir / self.relative_optimizer_path / "success.flag"
         )
+
+        self.optimizer.support.check_opt_support(who=self.optimizer.name, problem=self)
 
     def as_dict(self) -> dict[str, Any]:
         """Return the Problem as a dictionary."""
@@ -388,12 +224,58 @@ class Problem:
 
     @dataclass(kw_only=True)
     class Support:
-        fidelities: Literal["single", "single_required", "many", "many_required"] | Literal[False]
-        objectives: Literal["single", "many"]
-        cost_awareness: (
-            Literal["single", "single_required", "many", "many_required"] | Literal[False]
-        )
+        """The support of an optimizer for a problem."""
+
+        objectives: tuple[Literal["single", "many"], ...]
+        fidelities: tuple[Literal[None, "single", "many"], ...]
+        cost_awareness: tuple[Literal[None, "single", "many"], ...]
         tabular: bool
+
+        def check_opt_support(self, who: str, *, problem: Problem) -> None:
+            """Check if the problem is supported by the support."""
+            match problem.fidelity:
+                case None if None not in self.fidelities:
+                    raise ValueError(
+                        f"Optimizer {who} does not support having no fidelties for {problem.name}!"
+                    )
+                case tuple() if "single" not in self.fidelities:
+                    raise ValueError(
+                        f"Optimizer {who} does not support multi-fidelty for {problem.name}!"
+                    )
+                case Mapping() if "many" not in self.fidelities:
+                    raise ValueError(
+                        f"Optimizer {who} does not support many-fidelty for {problem.name}!"
+                    )
+
+            match problem.objective:
+                case tuple() if "single" not in self.objectives:
+                    raise ValueError(
+                        f"Optimizer {who} does not support single-objective for {problem.name}!"
+                    )
+                case Mapping() if "many" not in self.objectives:
+                    raise ValueError(
+                        f"Optimizer {who} does not support multi-objective for {problem.name}!"
+                    )
+
+            match problem.cost:
+                case None if None not in self.cost_awareness:
+                    raise ValueError(
+                        f"Optimizer {who} does not support having no cost for {problem.name}!"
+                    )
+                case tuple() if "single" not in self.cost_awareness:
+                    raise ValueError(
+                        f"Optimizer {who} does not support single-cost for {problem.name}!"
+                    )
+                case Mapping() if "many" not in self.cost_awareness:
+                    raise ValueError(
+                        f"Optimizer {who} does not support multi-cost for {problem.name}!"
+                    )
+
+            match problem.is_tabular:
+                case True if not self.tabular:
+                    raise ValueError(
+                        f"Optimizer {who} does not support tabular benchmarks for {problem.name}!"
+                    )
 
     @dataclass
     class Report:

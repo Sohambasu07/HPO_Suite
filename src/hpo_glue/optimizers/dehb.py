@@ -12,7 +12,6 @@ from hpo_glue.problem import Problem
 from hpo_glue.query import Config, Query
 
 if TYPE_CHECKING:
-    from hpo_glue.problem import Fidelity
     from hpo_glue.result import Result
 
 
@@ -25,9 +24,9 @@ class DEHB_Optimizer(Optimizer):
     name = "DEHB"
 
     support = Problem.Support(
-        fidelities="single",
-        objectives="single",
-        cost_awareness="single",
+        fidelities=(None, "single"),
+        objectives=("single",),
+        cost_awareness=(None, "single"),
         tabular=False,
     )
 
@@ -49,14 +48,11 @@ class DEHB_Optimizer(Optimizer):
             case _:
                 raise TypeError("Config space must be a list or a ConfigurationSpace!")
 
-        self._fidelity: Fidelity | None
         match problem.fidelity:
             case None:
-                self._fidelity = None
                 min_fidelity = None
                 max_fidelity = None
             case (_, fidelity):
-                self._fidelity = fidelity
                 min_fidelity = fidelity.min
                 max_fidelity = fidelity.max
             case Mapping():
@@ -82,15 +78,17 @@ class DEHB_Optimizer(Optimizer):
         """Ask DEHB for a new config to evaluate."""
         info = self.dehb.ask()
 
-        fidelity = info.get("fidelity")
-        match fidelity:
+        match self.problem.fidelity:
             case None:
                 fidelity = None
-            case float() | int():
-                assert self._fidelity is not None
-                fidelity = int(fidelity) if self._fidelity.kind is int else fidelity
+            case (key, fidelity_def):
+                _val = info["fidelity"]
+                value = int(_val) if fidelity_def.kind is int else _val
+                fidelity = (key, value)
+            case Mapping():
+                raise NotImplementedError("# TODO: many-fidleity not yet implemented for DEHB!")
             case _:
-                raise NotImplementedError("Unexpected return type for SMAC budget!")
+                raise TypeError("Fidelity must be None, a tuple, or a mapping!")
 
         config_id = info["config_id"]
         raw_config = info["config"]
@@ -107,15 +105,26 @@ class DEHB_Optimizer(Optimizer):
         fitness: float
         match self.problem.objective:
             case (name, metric):
-                fitness = metric.as_minimize(result.full_results[name])
+                fitness = metric.as_minimize(result.values[name])
             case Mapping():
                 raise NotImplementedError("# TODO: Multiobjective not yet implemented for DEHB!")
             case _:
                 raise TypeError("Objective must be a string or a list of strings!")
 
-        cost = self.problem.budget.calculate_used_budget(result=result, problem=self.problem)
+        match self.problem.cost:
+            case None:
+                cost = None
+            case tuple():
+                raise NotImplementedError("# TODO: Cost-aware not yet implemented for DEHB!")
+            case Mapping():
+                raise NotImplementedError("# TODO: Cost-aware not yet implemented for DEHB!")
+            case _:
+                raise TypeError("Cost must be None or a mapping!")
 
-        self.dehb.tell(
-            result.query.optimizer_info,
-            {"fitness": fitness, "cost": cost},
-        )
+        if cost is None:
+            self.dehb.tell(
+                result.query.optimizer_info,
+                {"fitness": fitness},
+            )
+        else:
+            raise NotImplementedError("# TODO: Cost-aware not yet implemented for DEHB!")
