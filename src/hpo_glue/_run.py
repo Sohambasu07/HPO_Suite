@@ -87,7 +87,7 @@ def _run_problem(
 
                     pbar.update(budget_increment)
 
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             problem.set_state(Problem.State.CRASHED, err_tb=(e, traceback.format_exc()))
             match on_error:
                 case "raise":
