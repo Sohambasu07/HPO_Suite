@@ -87,7 +87,7 @@ class SMAC_Optimizer(Optimizer):
                 raise NotImplementedError("Unexpected return type for SMAC budget!")
 
         return Query(
-            config=Config(id=config_id, values=raw_config),
+            config=Config(config_id=config_id, values=raw_config),
             fidelity=fidelity,
             optimizer_info=smac_info,
         )
@@ -174,7 +174,7 @@ class SMAC_BO(SMAC_Optimizer):
 
         match problem.budget:
             case TrialBudget():
-                budget = problem.budget.budget
+                budget = problem.budget.total
             case CostBudget():
                 raise ValueError("SMAC BO does not support cost-aware benchmarks!")
             case _:
@@ -266,7 +266,7 @@ class SMAC_Hyperband(SMAC_Optimizer):
         working_directory.mkdir(parents=True, exist_ok=True)
         match problem.budget:
             case TrialBudget():
-                budget = problem.budget.budget
+                budget = problem.budget.total
             case CostBudget():
                 raise ValueError("SMAC BO does not support cost-aware benchmarks!")
             case _:

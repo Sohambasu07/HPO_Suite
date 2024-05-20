@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import logging
-import shutil
+import traceback
 import warnings
-from pathlib import Path
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Literal
 
 import pandas as pd
 from tqdm import TqdmWarning, tqdm
 
-from hpo_glue.history import History
 from hpo_glue.problem import Problem
+
+if TYPE_CHECKING:
+    from hpo_glue.result import Result
 
 logger = logging.getLogger(__name__)
 
@@ -25,49 +28,41 @@ logger = logging.getLogger(__name__)
 # >   decision = opt.tell(result)
 # >   if decision == "stop":
 # >         break
-def run_problem(
+def _run_problem(
     problem: Problem,
     *,
-    expdir: Path | str = "hpo-glue-output",
-    save: bool = True,
-    overwrite: bool = False,
+    overwrite: Problem.State | str | Sequence[Problem.State | str] | bool = False,
+    on_error: Literal["raise", "continue"] = "raise",
 ) -> Problem.Report:
-    """Runs an optimizer on a benchmark, returning a report."""
-    path = Path(expdir) / problem.name
-    df_path = Path(expdir) / "dfs" / f"{problem.name}.parquet"
-    if overwrite:
-        logger.info(f"Overwriting {problem.name} at {path} as `overwrite=True` was set.")
-        if path.exists():
-            try:
-                shutil.rmtree(path)
-            except Exception as e:
-                logger.exception(e)
-                logger.error(f"Error deleting {path}: {e}")
-        if df_path.exists():
-            try:
-                df_path.unlink()
-            except Exception as e:
-                logger.exception(e)
-                logger.error(f"Error deleting {df_path}: {e}")
-    elif path.exists():
-        if df_path.exists():
-            logger.info(f"Loading results for {problem.name} from {path}")
-            return Problem.Report.from_df(df=pd.read_parquet(df_path), problem=problem)
-        raise RuntimeError(
-            "The optimizer ran before but no dataframe of results was found at "
-            f"{df_path}. Set `overwrite=True` to rerun the optimizer."
+    if on_error not in ("raise", "continue"):
+        raise ValueError(f"Invalid value for `on_error`: {on_error}")
+
+    state = problem.state()
+    if state in Problem.State.collect(overwrite):
+        logger.info(f"Overwriting {problem.name} in `{state=}` at {problem.working_dir}.")
+        problem.set_state(Problem.State.PENDING)
+
+    if problem.df_path.exists():
+        logger.info(f"Loading results for {problem.name} from {problem.working_dir}")
+        return Problem.Report.from_df(
+            df=pd.read_parquet(problem.df_path),
+            problem=problem,
         )
 
-    df_path.parent.mkdir(parents=True, exist_ok=True)
-    path.mkdir(parents=True, exist_ok=True)
+    if problem.working_dir.exists():
+        raise RuntimeError(
+            "The optimizer ran before but no dataframe of results was found at "
+            f"{problem.df_path}. Set `overwrite=[{state}]` to rerun problems in this state"
+        )
 
+    problem.set_state(Problem.State.RUNNING)
     benchmark = problem.benchmark.load(problem.benchmark)
 
-    history = History()
+    history: list[Result] = []
 
     opt = problem.optimizer(
         problem=problem,
-        working_directory=path / "optimizer_dir",
+        working_directory=problem.working_dir / "optimizer_dir",
         config_space=benchmark.config_space,
         **problem.optimizer_hyperparameters,
     )
@@ -78,21 +73,34 @@ def run_problem(
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=TqdmWarning)
 
-        with tqdm(desc=f"{problem.name}", total=problem.budget.budget) as pbar:
-            while not budget_tracker.should_stop():
-                config = opt.ask()
-                result = benchmark.query(config)
-                opt.tell(result)
+        try:
+            with tqdm(desc=f"{problem.name}", total=problem.budget.total) as pbar:
+                while not budget_tracker.should_stop():
+                    config = opt.ask()
+                    result = benchmark.query(config)
+                    budget_increment = budget_tracker.update(result=result, problem=problem)
 
-                history.add(result)
-                used_budget = budget_tracker.update(result=result, problem=problem)
-                pbar.update(used_budget)
+                    result.budget_cost = budget_increment
+                    opt.tell(result)
 
-    report = Problem.Report(problem=problem, history=history)
-    if save:
-        logger.info(f"Saving {problem.name} at {path}")
-        report.save(path=df_path)
-        loaded = Problem.Report.from_df(df=pd.read_parquet(df_path), problem=problem)
-        pd.testing.assert_frame_equal(loaded.df(), report.df())
+                    history.append(result)
 
+                    pbar.update(budget_increment)
+
+        except Exception as e:  # noqa: BLE001
+            problem.set_state(Problem.State.CRASHED, err_tb=(e, traceback.format_exc()))
+            match on_error:
+                case "raise":
+                    raise e
+                case "continue":
+                    logger.exception(e)
+                    logger.error(f"Error running {problem.name}: {e}")
+                case _:
+                    raise RuntimeError(f"Invalid value for `on_error`: {on_error}") from e
+
+    logger.info(f"COMPLETED running {problem.name}")
+
+    report = Problem.Report(problem=problem, results=history)
+    logger.info(f"Saving {problem.name} at {problem.working_dir}")
+    problem.set_state(Problem.State.COMPLETE, df=report.df())
     return report

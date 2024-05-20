@@ -59,7 +59,7 @@ class RandomSearch(Optimizer):
         match self.config_space:
             case ConfigurationSpace():
                 config = Config(
-                    id=str(self._counter),
+                    config_id=str(self._counter),
                     values=self.config_space.sample_configuration().get_dictionary(),
                 )
             case list():

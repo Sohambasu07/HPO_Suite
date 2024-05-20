@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 class TrialBudget:
     """A budget for the number of trials to run."""
 
-    budget: int
+    total: int
     """Total amount of budget allowed for the optimizer for this problem.
 
     How this is interpreted is depending on fidelity type.
@@ -83,13 +83,13 @@ class TrialBudget:
 
     def should_stop(self) -> bool:
         """Check if the budget has been used up."""
-        return self.used_budget >= self.budget
+        return self.used_budget >= self.total
 
     @property
     def path_str(self) -> str:
         """Return a string representation of the budget."""
         clsname = self.__class__.__name__
-        return f"{clsname}={self.budget}"
+        return f"{clsname}={self.total}"
 
     def clone(self) -> Self:
         """Return a clone of the budget."""
@@ -100,7 +100,7 @@ class TrialBudget:
 class CostBudget:
     """A budget for the cost of the trials to run."""
 
-    budget: int | float
+    total: int | float
 
     def __post_init__(self):
         raise NotImplementedError("Cost budgets not yet supported")
@@ -134,7 +134,7 @@ class CostBudget:
     def path_str(self) -> str:
         """Return a string representation of the budget."""
         clsname = self.__class__.__name__
-        return f"{clsname}={self.budget}"
+        return f"{clsname}={self.total}"
 
     def clone(self) -> Self:
         """Return a clone of the budget."""

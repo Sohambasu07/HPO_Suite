@@ -58,7 +58,7 @@ class SyneTuneOptimizer(Optimizer):
 
         # TODO: How to get the fidelity??
         return Query(
-            config=Config(id=name, values=trial.config),
+            config=Config(config_id=name, values=trial.config),
             fidelity=None,
             optimizer_info=trial,
         )
@@ -68,12 +68,12 @@ class SyneTuneOptimizer(Optimizer):
         match self.problem.objective:
             case Mapping():
                 results_obj_dict = {
-                    key: result.full_results[key]
-                    for key in result.full_results
+                    key: result.values[key]
+                    for key in result.values
                     if key in self.problem.objective
                 }
             case (metric_name, _):
-                results_obj_dict = {metric_name: result.full_results[metric_name]}
+                results_obj_dict = {metric_name: result.values[metric_name]}
             case _:
                 raise TypeError("Objective must be a string or a list of strings")
 

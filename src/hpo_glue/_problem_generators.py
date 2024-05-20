@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Iterable, Iterator, Mapping
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, TypeAlias, TypeVar
 
 from more_itertools import roundrobin, take
@@ -22,7 +23,9 @@ OptWithHps: TypeAlias = tuple[type[Optimizer], Mapping[str, Any]]
 
 
 def _on_error(
-    etype: type[Exception], msg: str, on_error: Literal["warn", "raise", "ignore"]
+    etype: type[Exception],
+    msg: str,
+    on_error: Literal["warn", "raise", "ignore"],
 ) -> None:
     match on_error:
         case "warn":
@@ -40,7 +43,8 @@ def _generate_problem_set(  # noqa: C901, PLR0911, PLR0912, PLR0915
     ),
     benchmarks: BenchmarkDescription | Iterable[BenchmarkDescription],
     *,
-    budget: BudgetType | int | float,
+    expdir: Path | str,
+    budget: BudgetType | int,
     seeds: int | Iterable[int],
     fidelities: int = 0,
     objectives: int = 1,
@@ -60,6 +64,7 @@ def _generate_problem_set(  # noqa: C901, PLR0911, PLR0912, PLR0915
             for o in optimizers:
                 yield from _generate_problem_set(
                     optimizers=o,
+                    expdir=expdir,
                     benchmarks=benchmarks,
                     budget=budget,
                     seeds=seeds,
@@ -82,6 +87,7 @@ def _generate_problem_set(  # noqa: C901, PLR0911, PLR0912, PLR0915
                 yield from _generate_problem_set(
                     optimizers=(optimizer, hps),
                     benchmarks=b,
+                    expdir=expdir,
                     budget=budget,
                     seeds=seeds,
                     fidelities=fidelities,
@@ -95,10 +101,14 @@ def _generate_problem_set(  # noqa: C901, PLR0911, PLR0912, PLR0915
             raise ValueError("Unexpected case")
 
     match budget:
-        case int() | float():
+        case int():
             budget = TrialBudget(budget)
+        case TrialBudget():
+            budget = budget.clone()
         case CostBudget():
             raise NotImplementedError("Cost budgets are not yet supported")
+        case _:
+            raise TypeError(f"Unexpected type for `{budget=}`: {type(budget)}")
 
     # Validate fidelities request
     if fidelities < 0:
@@ -231,6 +241,7 @@ def _generate_problem_set(  # noqa: C901, PLR0911, PLR0912, PLR0915
         yield Problem(
             optimizer=optimizer,
             benchmark=benchmark,
+            expdir=Path(expdir),
             seed=seed,
             fidelity=_fid,
             objective=_obj,

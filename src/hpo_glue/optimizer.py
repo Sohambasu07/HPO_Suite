@@ -5,6 +5,8 @@ from collections.abc import Iterable, Iterator, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
+from hpo_glue.constants import DEFAULT_RELATIVE_EXP_DIR
+
 if TYPE_CHECKING:
     from ConfigSpace import ConfigurationSpace
 
@@ -60,12 +62,13 @@ class Optimizer(ABC):
         """Tell the optimizer the result of the query."""
 
     @classmethod
-    def generate_problems(
+    def generate_problems(  # noqa: PLR0913
         cls,
         benchmarks: BenchmarkDescription | list[BenchmarkDescription],
         *,
+        expdir: Path | str = DEFAULT_RELATIVE_EXP_DIR,
         hyperparameters: dict[str, Any] | list[dict[str, Any]] | None = None,
-        budget: BudgetType | int | float,
+        budget: BudgetType | int,
         seeds: int | Iterable[int],
         fidelities: int = 0,
         objectives: int = 1,
@@ -81,6 +84,7 @@ class Optimizer(ABC):
         Args:
             benchmarks: The benchmark to generate problems for.
                 Can provide a single benchmark or a list of benchmarks.
+            expdir: Which directory to store experiment results into.
             hyperparameters: The hyperparameters to use for the optimizer, if any.
             budget: The budget to use for the problems. Budget defaults to a n_trials budget
                 where when multifidelty is enabled, fractional budget can be used and 1 is
@@ -112,6 +116,7 @@ class Optimizer(ABC):
             benchmarks=benchmarks,
             budget=budget,
             seeds=seeds,
+            expdir=expdir,
             fidelities=fidelities,
             objectives=objectives,
             costs=costs,

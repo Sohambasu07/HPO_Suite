@@ -3,11 +3,13 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeAlias
 
 import pandas as pd
 
 from hpo_glue.config import Config
+from hpo_glue.constants import DEFAULT_RELATIVE_EXP_DIR
 from hpo_glue.optimizer import Optimizer
 from hpo_glue.result import Result
 
@@ -65,14 +67,15 @@ class BenchmarkDescription:
 
     def generate_problems(
         self,
-        *,
         optimizers: (
             type[Optimizer]
             | OptWithHps
             | list[type[Optimizer]]
             | list[OptWithHps | type[Optimizer]]
         ),
-        budget: BudgetType | int | float,
+        *,
+        expdir: Path | str = DEFAULT_RELATIVE_EXP_DIR,
+        budget: BudgetType | int,
         seeds: int | Iterable[int],
         fidelities: int = 0,
         objectives: int = 1,
@@ -90,8 +93,7 @@ class BenchmarkDescription:
                 Can provide a single optimizer or a list of optimizers.
                 If you wish to provide hyperparameters for the optimizer, provide a tuple with the
                 optimizer.
-            benchmark: The benchmark to generate problems for.
-                Can provide a single benchmark or a list of benchmarks.
+            expdir: Which directory to store experiment results into.
             budget: The budget to use for the problems. Budget defaults to a n_trials budget
                 where when multifidelty is enabled, fractional budget can be used and 1 is
                 equivalent a full fidelity trial.
@@ -113,6 +115,7 @@ class BenchmarkDescription:
             benchmarks=self,
             budget=budget,
             seeds=seeds,
+            expdir=expdir,
             fidelities=fidelities,
             objectives=objectives,
             costs=costs,
@@ -317,7 +320,7 @@ class TabularBenchmark:
         self.result_keys = result_keys
         self.fidelity_keys = fidelity_keys
         self.config_space = [
-            Config(id=str(i), values=config)  # enforcing str for id
+            Config(config_id=str(i), values=config)  # enforcing str for id
             for i, config in enumerate(
                 self.table[config_keys]
                 .drop_duplicates()

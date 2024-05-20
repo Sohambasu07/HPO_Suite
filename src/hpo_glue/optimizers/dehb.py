@@ -95,7 +95,7 @@ class DEHB_Optimizer(Optimizer):
         name = f"trial_{config_id}"
 
         return Query(
-            config=Config(id=name, values=raw_config),
+            config=Config(config_id=name, values=raw_config),
             fidelity=fidelity,
             optimizer_info=info,
         )

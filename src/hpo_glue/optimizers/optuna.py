@@ -97,7 +97,7 @@ class OptunaOptimizer(Optimizer):
                 trial = self.optimizer.ask(self._distributions)
                 name = f"trial_{trial.number}"
                 return Query(
-                    config=Config(id=name, values=trial.params),
+                    config=Config(config_id=name, values=trial.params),
                     fidelity=None,
                     optimizer_info=trial,
                 )

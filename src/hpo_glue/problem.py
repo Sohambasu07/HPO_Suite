@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable, Iterator, Mapping
+import shutil
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -10,32 +11,50 @@ from typing import TYPE_CHECKING, Any, Literal, TypeAlias
 import pandas as pd
 
 from hpo_glue.budget import CostBudget, TrialBudget
-from hpo_glue.history import History
+from hpo_glue.config import Config
+from hpo_glue.constants import DEFAULT_RELATIVE_EXP_DIR
+from hpo_glue.fidelity import Fidelity, ListFidelity, RangeFidelity
+from hpo_glue.measure import Measure
 from hpo_glue.optimizer import Optimizer
+from hpo_glue.query import Query
+from hpo_glue.result import Result
+from hpo_glue.utils import reduce_dtypes
 
 if TYPE_CHECKING:
     from hpo_glue.benchmark import BenchmarkDescription
     from hpo_glue.budget import BudgetType
-    from hpo_glue.fidelity import Fidelity
-    from hpo_glue.measure import Measure
 
 logger = logging.getLogger(__name__)
 
 OptWithHps: TypeAlias = tuple[type[Optimizer], Mapping[str, Any]]
 
 
-class ProblemState(str, Enum):
-    """The state of a problem."""
+def _try_delete_if_exists(path: Path) -> None:
+    if path.exists():
+        try:
+            if path.is_dir():
+                shutil.rmtree(path)
+            else:
+                path.unlink()
 
-    pending = "pending"
-    running = "running"
-    crashed = "crashed"
-    finished = "finished"
+        except Exception as e:
+            logger.exception(e)
+            logger.error(f"Error deleting {path}: {e}")
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Problem:
     """A problem to optimize over."""
+
+    # NOTE: These are mainly for consumers who need to interact beyond forward facing API
+    Config: TypeAlias = Config
+    Query: TypeAlias = Query
+    Result: TypeAlias = Result
+    Measure: TypeAlias = Measure
+    TrialBudget: TypeAlias = TrialBudget
+    CostBudget: TypeAlias = CostBudget
+    RangeFidelity: TypeAlias = RangeFidelity
+    ListFidelity: TypeAlias = ListFidelity
 
     objective: tuple[str, Measure] | Mapping[str, Measure]
     """The metrics to optimize for this problem, with a specific order.
@@ -55,7 +74,7 @@ class Problem:
     """
 
     cost: tuple[str, Measure] | Mapping[str, Measure] | None
-    """The cost metric to use for this problem.
+    """The cost metric to use for this proble.
 
     When `None`, the problem is considered a black-box problem with no cost.
 
@@ -79,6 +98,24 @@ class Problem:
     optimizer_hyperparameters: Mapping[str, Any] = field(default_factory=dict)
     """The hyperparameters to use for the optimizer"""
 
+    expdir: Path = field(default=DEFAULT_RELATIVE_EXP_DIR)
+    """Default directory to use for experiments."""
+
+    working_dir: Path = field(init=False)
+    """The working directory for this problem."""
+
+    df_path: Path = field(init=False)
+    """Path to the dataframe of the problem."""
+
+    error_file: Path = field(init=False)
+    """Path to the error file of the problem."""
+
+    running_flag: Path = field(init=False)
+    """Path to the file flag inidicating this problem is running."""
+
+    complete_flag: Path = field(init=False)
+    """Path to the flag inidicating this problem is complete."""
+
     name: str = field(init=False)
     """The name of the problem statement.
 
@@ -101,6 +138,9 @@ class Problem:
     """Whether the problem setup allows for trajectories to be queried."""
 
     def __post_init__(self):
+        if isinstance(self.expdir, str):
+            self.expdir = Path(self.expdir)
+
         self.is_tabular = self.benchmark.is_tabular
         self.is_manyfidelity: bool
         self.is_multifidelity: bool
@@ -158,7 +198,105 @@ class Problem:
         }
         self._objective_str = objective_str
         self.name = "_".join(f"{k}={v}" for k, v in name_parts.items())
+        self.df_path = self.expdir / "dfs" / f"{self.name}.parquet"
+
+        self.working_dir = self.expdir / self.name
+        self.error_file = self.working_dir / "error.txt"
+        self.running_flag = self.working_dir / "running.flag"
+        self.complete_flag = self.working_dir / "complete.flag"
+
         self.optimizer.support.check_opt_support(who=self.optimizer.name, problem=self)
+
+    class State(str, Enum):
+        """The state of a problem."""
+
+        PENDING = "PENDING"
+        RUNNING = "RUNNING"
+        CRASHED = "CRASHED"
+        COMPLETE = "COMPLETE"
+
+        @classmethod
+        def collect(
+            cls,
+            state: str | Problem.State | bool | Iterable[Problem.State | str],
+        ) -> list[Problem.State]:
+            """Collect state requested."""
+            match state:
+                case True:
+                    return list(cls)
+                case False:
+                    return []
+                case Problem.State():
+                    return [state]
+                case str():
+                    return [cls(state)]
+                case _:
+                    return [cls(s) if isinstance(s, str) else s for s in state]
+
+    def state(self) -> Problem.State:
+        """Return the state of the problem.
+
+        Args:
+            expdir: The directory to check for the problem.
+        """
+        if self.complete_flag.exists():
+            return Problem.State.COMPLETE
+
+        if self.error_file.exists():
+            return Problem.State.CRASHED
+
+        if self.running_flag.exists():
+            return Problem.State.RUNNING
+
+        return Problem.State.PENDING
+
+    def set_state(
+        self,
+        state: Problem.State,
+        *,
+        df: pd.DataFrame | None = None,
+        err_tb: tuple[Exception, str] | None = None,
+    ) -> None:
+        """Set the problem to running.
+
+        Args:
+            state: The state to set the problem to.
+            df: Optional dataframe to save if setting to [`Problem.State.COMPLETE`].
+            err_tb: Optional error traceback to save if setting to [`Problem.State.CRASHED`].
+        """
+        match state:
+            case Problem.State.PENDING:
+                # NOTE: Working dir takes care of flags
+                for _file in (self.working_dir, self.df_path):
+                    _try_delete_if_exists(_file)
+            case Problem.State.RUNNING:
+                for _file in (self.df_path, self.complete_flag, self.error_file, self.error_file):
+                    _try_delete_if_exists(_file)
+
+                self.working_dir.mkdir(parents=True, exist_ok=True)
+                self.df_path.parent.mkdir(parents=True, exist_ok=True)
+                self.running_flag.touch()
+            case Problem.State.CRASHED:
+                for _file in (self.complete_flag, self.running_flag, self.df_path):
+                    _try_delete_if_exists(_file)
+
+                with self.error_file.open("w") as f:
+                    if err_tb is None:
+                        f.write("None")
+                    else:
+                        exc, tb = err_tb
+                        f.write(f"{tb}\n{exc}")
+
+            case Problem.State.COMPLETE:
+                self.complete_flag.touch()
+
+                if df is not None:
+                    df.convert_dtypes().to_parquet(self.df_path)
+
+                for flag in (self.error_file, self.running_flag):
+                    _try_delete_if_exists(flag)
+            case _:
+                raise ValueError(f"Unknown state {state}")
 
     def as_dict(self) -> dict[str, Any]:
         """Return the Problem as a dictionary."""
@@ -167,21 +305,33 @@ class Problem:
     def run(
         self,
         *,
-        overwrite: bool = False,
-        expdir: Path | str = "hpo-glue-output",
+        on_error: Literal["raise", "continue"] = "raise",
+        overwrite: Problem.State | str | Sequence[Problem.State | str] | bool = False,
     ) -> Problem.Report:
         """Run the problem.
 
         Args:
-            overwrite: Whether to overwrite the results if they already exist.
-            expdir: The directory to store the results in.
-        """
-        from hpo_glue._run import run_problem
+            on_error: How to handle errors. In any case, the error will be written
+                into the [`working_dir`][hpo_glue.problem.Problem.working_dir]
+                of the problem.
 
-        return run_problem(problem=self, expdir=expdir, overwrite=overwrite)
+                * If "raise", raise an error.
+                * If "continue", log the error and continue.
+
+            overwrite: What to overwrite.
+
+                * If a single value, overwrites problem in that state,
+                * If a list of states, overwrites any problem in one of those
+                 states.
+                * If `True`, overwrite problems in all states.
+                * If `False`, don't overwrite any problems.
+        """
+        from hpo_glue._run import _run_problem
+
+        return _run_problem(problem=self, on_error=on_error, overwrite=overwrite)
 
     @classmethod
-    def generate(
+    def generate(  # noqa: PLR0913
         cls,
         optimizers: (
             type[Optimizer]
@@ -191,7 +341,8 @@ class Problem:
         ),
         benchmarks: BenchmarkDescription | Iterable[BenchmarkDescription],
         *,
-        budget: BudgetType | int | float,
+        expdir: Path | str = DEFAULT_RELATIVE_EXP_DIR,
+        budget: BudgetType | int,
         seeds: int | Iterable[int],
         fidelities: int = 0,
         objectives: int = 1,
@@ -205,12 +356,13 @@ class Problem:
         amount of objectives, fidelities or costs, a ValueError will be raised.
 
         Args:
-            optimizer: The optimizer class to generate problems for.
+            optimizers: The optimizer class to generate problems for.
                 Can provide a single optimizer or a list of optimizers.
                 If you wish to provide hyperparameters for the optimizer, provide a tuple with the
                 optimizer.
-            benchmark: The benchmark to generate problems for.
+            benchmarks: The benchmark to generate problems for.
                 Can provide a single benchmark or a list of benchmarks.
+            expdir: Which directory to store experiment results into.
             budget: The budget to use for the problems. Budget defaults to a n_trials budget
                 where when multifidelty is enabled, fractional budget can be used and 1 is
                 equivalent a full fidelity trial.
@@ -228,6 +380,7 @@ class Problem:
         from hpo_glue._problem_generators import _generate_problem_set
 
         yield from _generate_problem_set(
+            expdir=expdir,
             optimizers=optimizers,
             benchmarks=benchmarks,
             budget=budget,
@@ -238,54 +391,6 @@ class Problem:
             multi_objective_generation=multi_objective_generation,
             on_error=on_error,
         )
-
-    def series(self) -> pd.Series:
-        """Return the Problem as a pandas Series."""
-        parts = {}
-        parts["name"] = self.name
-
-        match self.objective:
-            case tuple():
-                parts["objective"] = self.objective[0]
-            case Mapping():
-                parts["objective"] = ",".join(self.objective.keys())
-            case _:
-                raise TypeError("Objective must be a tuple (name, measure) or a mapping")
-
-        match self.fidelity:
-            case None:
-                parts["fidelity"] = None
-            case (name, _):
-                parts["fidelity"] = name
-            case Mapping():
-                parts["fidelity"] = ",".join(self.fidelity.keys())
-
-        match self.cost:
-            case None:
-                parts["cost"] = None
-            case (name, _):
-                parts["cost"] = name
-            case Mapping():
-                parts["cost"] = ",".join(self.cost.keys())
-
-        parts["benchmark"] = self.benchmark.name
-        parts["seed"] = self.seed
-        match self.budget:
-            case TrialBudget(budget):
-                parts["budget.kind"] = "TrialBudget"
-                parts["budget.value"] = budget
-            case CostBudget(budget):
-                parts["budget.kind"] = "CostBudget"
-                parts["budget.value"] = budget
-            case _:
-                raise NotImplementedError(f"Unknown budget type {self.budget}")
-
-        parts["opt.name"] = self.optimizer.name
-
-        for k, v in self.optimizer_hyperparameters.items():
-            parts[f"opt.hp.{k}"] = v
-
-        return pd.Series({f"problem.{k}": v for k, v in parts.items()})
 
     @dataclass(kw_only=True)
     class Support:
@@ -347,42 +452,266 @@ class Problem:
         """The report of a GLUE run."""
 
         problem: Problem
-        history: History
+        results: list[Result]
 
-        def df(self) -> pd.DataFrame:
-            """Return the history as a pandas DataFrame."""
-            # Fill in the fields of the problem as constant columns
-            _df = self.history.df()
-            problem_series = self.problem.series()
-            for k, v in problem_series.items():
+        def df(self) -> pd.DataFrame:  # noqa: C901, PLR0915
+            """Return the history as a pandas DataFrame.
+
+            Returns:
+                The history as a pandas DataFrame.
+            """
+
+            def _encode_result(_r: Result) -> dict[str, Any]:
+                _rparts: dict[str, Any] = {
+                    "config.id": _r.config.config_id,
+                    "query.id": _r.query.query_id,
+                    "result.budget_cost": _r.budget_cost,
+                }
+                match _r.query.fidelity:
+                    case None:
+                        _rparts["query.fidelity.count"] = 0
+                    case (name, val):
+                        _rparts["query.fidelity.count"] = 1
+                        _rparts["query.fidelity.1.name"] = name
+                        _rparts["query.fidelity.1.value"] = val
+                    case Mapping():
+                        _rparts["query.fidelity.count"] = len(_r.query.fidelity)
+                        for i, (k, v) in enumerate(_r.query.fidelity.items(), start=1):
+                            _rparts[f"query.fidelity.{i}.name"] = k
+                            _rparts[f"query.fidelity.{i}.value"] = v
+
+                match self.problem.objective:
+                    case (_name, _measure):
+                        _rparts["result.objective.1.value"] = _r.values[_name]
+                    case Mapping():
+                        for i, name in enumerate(self.problem.objective, start=1):
+                            _rparts[f"result.cost.{i}.value"] = _r.values[name]
+
+                match self.problem.fidelity:
+                    case None:
+                        pass
+                    case (name, _):
+                        assert isinstance(_r.fidelity, tuple)
+                        _rparts["result.fidelity.1.value"] = _r.fidelity[1]
+                    case Mapping():
+                        assert isinstance(_r.fidelity, Mapping)
+                        for i, name in enumerate(self.problem.fidelity, start=1):
+                            _rparts[f"result.fidelity.{i}.value"] = _r.fidelity[name]
+
+                match self.problem.cost:
+                    case None:
+                        pass
+                    case (name, _):
+                        _rparts["result.cost.1.value"] = _r.values[name]
+                    case Mapping():
+                        for i, name in enumerate(self.problem.cost, start=1):
+                            _rparts[f"result.fidelity.{i}.value"] = _r.values[name]
+
+                return _rparts
+
+            parts = {}
+            problem = self.problem
+            parts["problem.name"] = problem.name
+
+            match problem.objective:
+                case (name, measure):
+                    parts["problem.objective.count"] = 1
+                    parts["problem.objective.1.name"] = name
+                    parts["problem.objective.1.minimize"] = measure.minimize
+                    parts["problem.objective.1.min"] = measure.bounds[0]
+                    parts["problem.objective.1.max"] = measure.bounds[1]
+                case Mapping():
+                    list(problem.objective)
+                    parts["problem.objective.count"] = len(problem.objective)
+                    for i, (k, v) in enumerate(problem.objective.items(), start=1):
+                        parts[f"problem.objective.{i}.name"] = k
+                        parts[f"problem.objective.{i}.minimize"] = v.minimize
+                        parts[f"problem.objective.{i}.min"] = v.bounds[0]
+                        parts[f"problem.objective.{i}.max"] = v.bounds[1]
+                case _:
+                    raise TypeError("Objective must be a tuple (name, measure) or a mapping")
+
+            match problem.fidelity:
+                case None:
+                    parts["problem.fidelity.count"] = 0
+                case (name, fid):
+                    parts["problem.fidelity.count"] = 1
+                    parts["problem.fidelity.1.name"] = name
+                    parts["problem.fidelity.1.min"] = fid.min
+                    parts["problem.fideltiy.1.max"] = fid.max
+                case Mapping():
+                    list(problem.fidelity)
+                    parts["problem.fidelity.count"] = len(problem.fidelity)
+                    for i, (k, v) in enumerate(problem.fidelity.items(), start=1):
+                        parts[f"problem.fidelity.{i}.name"] = k
+                        parts[f"problem.fidelity.{i}.min"] = v.min
+                        parts[f"problem.fidelity.{i}.max"] = v.max
+                case _:
+                    raise TypeError("Must be a tuple (name, fidelitiy) or a mapping")
+
+            match problem.cost:
+                case None:
+                    parts["problem.cost.count"] = 0
+                case (name, cost):
+                    parts["problem.cost.count"] = 1
+                    parts["problem.cost.1.name"] = name
+                    parts["problem.cost.1.minimize"] = cost.minimize
+                    parts["problem.cost.1.min"] = cost.bounds[0]
+                    parts["problem.cost.1.max"] = cost.bounds[1]
+                case Mapping():
+                    list(problem.cost)
+                    parts["problem.cost.count"] = len(problem.cost)
+                    for i, (k, v) in enumerate(problem.cost.items(), start=1):
+                        parts[f"problem.cost.{i}.name"] = k
+                        parts[f"problem.cost.{i}.minimize"] = v.minimize
+                        parts[f"problem.cost.{i}.min"] = v.bounds[0]
+                        parts[f"problem.cost.{i}.max"] = v.bounds[1]
+
+            _df = pd.DataFrame.from_records([_encode_result(r) for r in self.results])
+            for k, v in parts.items():
                 _df[k] = v
 
-            return _df.convert_dtypes()
+            _df["problem.benchmark"] = problem.benchmark.name
+            _df["problem.seed"] = problem.seed
+            match problem.budget:
+                case TrialBudget(total):
+                    _df["problem.budget.kind"] = "TrialBudget"
+                    _df["problem.budget.total"] = total
+                case CostBudget(total):
+                    _df["problem.budget.kind"] = "CostBudget"
+                    _df["problem.budget.total"] = total
+                case _:
+                    raise NotImplementedError(f"Unknown budget type {problem.budget}")
+
+            _df["problem.opt.name"] = problem.optimizer.name
+
+            if len(problem.optimizer_hyperparameters) > 0:
+                for k, v in problem.optimizer_hyperparameters.items():
+                    _df[f"problem.opt.hp.{k}"] = v
+
+                _df["problem.opt.hp_str"] = ",".join(
+                    f"{k}={v}" for k, v in problem.optimizer_hyperparameters.items()
+                )
+            else:
+                _df["problem.opt.hp_str"] = "default"
+
+            _df = _df.convert_dtypes()
+            cat_cols = [
+                c
+                for c in _df.select_dtypes(include="string").columns
+                if c not in ("config.id", "query.id")
+            ]
+            _df[cat_cols] = _df[cat_cols].astype("category")
+            return reduce_dtypes(_df, reduce_int=True, reduce_float=True)
 
         @classmethod
-        def from_df(cls, df: pd.DataFrame, problem: Problem) -> Problem.Report:
-            return cls(problem=problem, history=History.from_df(df))
+        def from_df(cls, df: pd.DataFrame, problem: Problem) -> Problem.Report:  # noqa: C901, PLR0915
+            """Load a GLUEReport from a pandas DataFrame.
+
+            Args:
+                df: The dataframe to load from. Will subselect rows
+                    that match the problem name.
+                problem: The problem definition that generated the runs.
+            """
+
+            def _row_to_result(series: pd.Series) -> Result:
+                _row = series.to_dict()
+                _result_values: dict[str, Any] = {}
+                match problem.objective:
+                    case (name, _):
+                        assert int(_row["problem.objective.count"]) == 1
+                        assert str(_row["problem.objective.1.name"]) == name
+                        _result_values[name] = _row["result.objective.1.value"]
+                    case Mapping():
+                        assert int(_row["problem.objective.count"]) == len(problem.objective)
+                        for i, k in enumerate(problem.objective, start=1):
+                            assert str(_row[f"problem.objective.{i}.name"]) == k
+                            _result_values[k] = _row[f"result.objective.{i}.value"]
+                    case _:
+                        raise TypeError("Objective must be a tuple (name, measure) or a mapping")
+
+                match problem.fidelity:
+                    case None:
+                        assert int(_row["problem.fidelity.count"]) == 0
+                        _result_fidelity = None
+                    case (name, fid):
+                        assert int(_row["problem.fidelity.count"]) == 1
+                        assert str(_row["problem.fidelity.1.name"]) == name
+                        _result_fidelity = (name, fid.kind(_row["result.fidelity.1.value"]))
+                    case Mapping():
+                        assert int(_row["problem.fidelity.count"]) == len(problem.fidelity)
+                        _result_fidelity = {}
+                        for i, (name, fid) in enumerate(problem.fidelity.items(), start=1):
+                            assert str(_row[f"problem.fidelity.{i}.name"]) == name
+                            _result_fidelity[name] = fid.kind(_row[f"result.fidelity.{i}.value"])
+                    case _:
+                        raise TypeError("Must be a tuple (name, fidelitiy) or a mapping")
+
+                match problem.cost:
+                    case None:
+                        assert int(_row["problem.cost.count"]) == 0
+                    case (name, _):
+                        assert int(_row["problem.cost.count"]) == 1
+                        assert str(_row["problem.cost.1.name"]) == name
+                        _result_values[name] = _row["result.cost.1.value"]
+                    case Mapping():
+                        assert int(_row["problem.cost.count"]) == len(problem.cost)
+                        for i, (name, _) in enumerate(problem.cost.items(), start=1):
+                            assert str(_row[f"problem.cost.{i}.name"]) == name
+                            _result_values[name] = _row[f"result.cost.{i}.value"]
+                    case _:
+                        raise TypeError("Must be a tuple (name, fidelitiy) or a mapping")
+
+                _query_f_count = int(_row["query.fidelity.count"])
+                _query_fidelity: None | tuple[str, int | float] | dict[str, int | float]
+                match _query_f_count:
+                    case 0:
+                        _query_fidelity = None
+                    case 1:
+                        _name = str(_row["query.fidelity.1.name"])
+                        assert problem.benchmark.fidelities is not None
+                        _fid = problem.benchmark.fidelities[_name]
+                        _val = _fid.kind(_row["query.fidelity.1.value"])
+                        _query_fidelity = (_name, _val)
+                    case _:
+                        _query_fidelity = {}
+                        for i in range(1, _query_f_count + 1):
+                            _name = str(_row[f"query.fidelity.{i}.name"])
+                            assert problem.benchmark.fidelities is not None
+                            _fid = problem.benchmark.fidelities[_name]
+                            _query_fidelity[_name] = _fid.kind(_row[f"query.fidelity.{i}.value"])
+
+                return Result(
+                    query=Query(
+                        config=Config(config_id=str(_row["config.id"]), values=None),
+                        optimizer_info=None,
+                        request_trajectory=False,
+                        fidelity=_query_fidelity,
+                    ),
+                    budget_cost=float(_row["result.budget_cost"]),
+                    values=_result_values,
+                    fidelity=_result_fidelity,
+                    trajectory=None,
+                )
+
+            this_problem = df["problem.name"] == problem.name
+            problem_columns = [c for c in df.columns if c.startswith("problem.")]
+            problem_duplicate_rows = df[this_problem].drop_duplicates(subset=problem_columns)
+            if len(problem_duplicate_rows) > 1:
+                raise ValueError(
+                    f"Multiple problem rows found for the provided df for problem '{problem.name}'"
+                    f"\n{problem_duplicate_rows}"
+                )
+
+            results = [_row_to_result(row) for _, row in df[this_problem].iterrows()]
+            return cls(problem=problem, results=results)
 
         def save(self, path: Path) -> None:
             """Save the GLUEReport to a path."""
             self.df().to_parquet(path, index=False)
 
         @classmethod
-        def from_path(cls, path: Path) -> Problem.Report:
+        def from_path(cls, path: Path, problem: Problem) -> Problem.Report:
             """Load a GLUEReport from a path."""
             df = pd.read_parquet(path)  # noqa: PD901
-            problem_cols = [col for col in df.columns if col.startswith("problem.")]
-            other_cols = [col for col in df.columns if not col.startswith("problem.")]
-
-            problem_df = df[problem_cols].drop_duplicates()
-            if len(problem_df) != 1:
-                raise ValueError(
-                    f"Expected exactly one problem in {path}, got {len(problem_df)}"
-                    f"\n{problem_df}"
-                )
-            problem_dict = problem_df.to_series().to_dict()
-
-            # TODO(eddiebergman): This won't fix optimizer hyperparameters or list types...
-            problem = Problem(**{k.replace("problem.", ""): v for k, v in problem_dict.items()})
-            history = History.from_df(df[other_cols])
-            return cls(problem=problem, history=history)
+            return cls.from_df(df, problem=problem)
