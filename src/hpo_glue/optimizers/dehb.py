@@ -7,9 +7,10 @@ from typing import TYPE_CHECKING, Any
 from ConfigSpace import ConfigurationSpace
 from dehb import DEHB
 
+from hpo_glue.config import Config
 from hpo_glue.optimizer import Optimizer
 from hpo_glue.problem import Problem
-from hpo_glue.query import Config, Query
+from hpo_glue.query import Query
 
 if TYPE_CHECKING:
     from hpo_glue.result import Result
@@ -34,9 +35,11 @@ class DEHB_Optimizer(Optimizer):
         self,
         *,
         problem: Problem,
+        seed: int,
         working_directory: Path,
         config_space: list[Config] | ConfigurationSpace,
         eta: int = 3,
+        verbose: bool = False,
         # TODO(eddiebergman): Add more DEHB parameters
     ):
         """Create a DEHB Optimizer instance for a given problem statement."""
@@ -63,20 +66,32 @@ class DEHB_Optimizer(Optimizer):
         working_directory.mkdir(parents=True, exist_ok=True)
 
         self.problem = problem
+
+        # TODO(eddiebergman): Clarify if DEHB is actually cost-aware in
+        # terms of how it optimizes or does it just track cost for the
+        # sake of `run()`? We only use `ask()` and `tell()` but it seems
+        # to require cost in `tell()`.
         self.dehb = DEHB(
             cs=config_space,
             min_fidelity=min_fidelity,
             max_fidelity=max_fidelity,
-            seed=problem.seed,
+            verbose=verbose,
+            seed=seed,
             eta=eta,
             n_workers=1,
             output_path=working_directory,
         )
+
+        # HACK(eddiebergman): DEHB doesn't have an option to disable logging
+        if not verbose:
+            self.dehb.logger.disable("dehb.optimizers.dehb")
+
         self._info_lookup: dict[str, dict[str, Any]] = {}
 
     def ask(self) -> Query:
         """Ask DEHB for a new config to evaluate."""
         info = self.dehb.ask()
+        assert isinstance(info, dict)
 
         match self.problem.fidelity:
             case None:
@@ -121,10 +136,13 @@ class DEHB_Optimizer(Optimizer):
             case _:
                 raise TypeError("Cost must be None or a mapping!")
 
+        assert isinstance(result.query.optimizer_info, dict)
         if cost is None:
             self.dehb.tell(
                 result.query.optimizer_info,
-                {"fitness": fitness},
+                # NOTE(eddiebergman): DEHB requires a cost value, even though
+                # we never specify anything related to cost.
+                {"fitness": fitness, "cost": result.budget_cost},
             )
         else:
             raise NotImplementedError("# TODO: Cost-aware not yet implemented for DEHB!")

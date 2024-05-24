@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 # ruff: noqa: PD901
-from collections.abc import Sequence
-from itertools import cycle
+from collections.abc import Mapping, Sequence
+from typing import TYPE_CHECKING, Any
 
-import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 
-from hpo_glue.plotting.styles import MARKERS
+from hpo_glue.plotting.styles import categorical_colors, distinct_markers
+
+if TYPE_CHECKING:
+    import matplotlib.pyplot as plt
 
 """
 # What else would I need in here?
@@ -45,78 +48,108 @@ memory usage: 24.2 KB
 """
 
 
+def _incumbents(
+    df: pd.DataFrame,
+    *,
+    by: str,
+    minimize: bool,
+) -> pd.DataFrame:
+    return (
+        df.assign(cumulative=(df[by].cummin() if minimize else df[by].cummax()))
+        .drop_duplicates(subset="cumulative", keep="first")
+        .drop(columns="cumulative")  # type: ignore
+    )
+
+
+def _join_if_tuple(
+    x: Any | tuple[Any, ...],
+    *,
+    sep: str,
+) -> str:
+    if not isinstance(x, tuple):
+        return str(x)
+    return sep.join(map(str, x))
+
+
+def _normalize_objectives_as_loss(
+    df: pd.DataFrame,
+    *,
+    objectives: Mapping[str, tuple[float, float]],
+) -> pd.DataFrame:
+    for name, (min_val, max_val) in objectives.items():
+        df[name] = (df[name] - min_val) / (max_val - min_val)
+    return df
+
+
 def _plot_one_benchmark(
     df: pd.DataFrame,
     *,
     x: str,
     y: str,
-    x_requires_cumulation: bool,
     minimize: bool,
     hue: str | Sequence[str],
     marker: str | Sequence[str],
     seed: str | None,
+    ylim: tuple[float, float] | None,
+    xlim: tuple[float, float] | None,
+    xlabel: str | None,
+    ylabel: str | None,
     ax: plt.Axes,
 ) -> None:
-    if x_requires_cumulation:
-        df = df.sort_values(x)
-        assert "x.cumulated" not in df.columns
-        df["x.cumulated"] = df[x].cumsum()
-        x = "x.cumulated"
-
-    if minimize:
-        regret_bound = df[y].min()
-        df["y.regret"] = df[y] - regret_bound
-    else:
-        regret_bound = df[y].max()
-        df["y.regret"] = regret_bound - df[y]
-
+    _regret_bound = df[y].min() if minimize else df[y].max()
     colors_needed = len(df[hue].drop_duplicates())
-    if colors_needed <= 10:  # noqa: PLR2004
-        _hues = iter(plt.get_cmap("tab10").colors)  # type: ignore
-    else:
-        _hues = cycle(plt.get_cmap("tab20").colors)  # type: ignore
+    colors = categorical_colors(n=colors_needed)
 
-    for (_hue_keys, hue_df), _hue in zip(df.groupby(hue), _hues, strict=False):
-        for (_marker_keys, marker_df), _marker in zip(
-            hue_df.groupby(marker), cycle(MARKERS), strict=False
-        ):
-            (", ".join(map(str, _hue_keys)) if isinstance(_hue_keys, tuple) else str(_hue_keys))
-            (
-                ", ".join(map(str, _marker_keys))
-                if isinstance(_marker_keys, tuple)
-                else str(_marker_keys)
-            )
+    markers_needed = len(df[marker].drop_duplicates())
+    markers = distinct_markers(n=markers_needed)
+
+    for (_hue_keys, hue_df), _hue in zip(df.groupby(hue), colors, strict=True):
+        for (_marker_keys, marker_df), _marker in zip(hue_df.groupby(marker), markers, strict=True):
+            hue_label = _join_if_tuple(_hue_keys, sep=", ")
+            marker_label = _join_if_tuple(_marker_keys, sep=", ")
+            label = f"{hue_label} ({marker_label})"
+
+            selected_df = marker_df
+            selected_df = selected_df.sort_values(by=x)
 
             full_frame = pd.DataFrame()
-            for seed_key, seed_df in marker_df.groupby(seed):
-                full_frame[seed_key] = (
-                    seed_df.assign(cumulative=seed_df["y.regret"].cummin())
-                    .drop_duplicates(subset="cumulative", keep="first")
-                    .drop(columns="cumulative")  # type: ignore
-                    .set_index(x)["y.regret"]
-                )
+            for seed_key, seed_df in selected_df.groupby(seed):
+                only_incs = _incumbents(seed_df, by=y, minimize=minimize)
+                inc_trace = only_incs.set_index(x)[y]
+                inc_trace = inc_trace - _regret_bound if minimize else _regret_bound - inc_trace
+                inc_trace.name = f"seed-{seed_key}"
+                full_frame[seed_key] = inc_trace
 
-            _data = full_frame.sort_index().ffill().dropna().agg(["mean", "std"], axis=1)
-            _means = _data["mean"]
-            _stds = _data["std"]
+            _data = full_frame.sort_index().ffill().dropna()
+            _data = _data.agg(["mean", "std"], axis=1)
 
-            _means.plot(  # type: ignore
+            _xs = _data.index.astype(np.float32).to_numpy()
+            _means = _data["mean"].to_numpy()  # type: ignore
+            _stds = _data["std"].to_numpy()  # type: ignore
+
+            ax.plot(  # type: ignore
+                _xs,
+                _means,
                 drawstyle="steps-post",
-                label=f"{y} (regret)",
-                ax=ax,
+                label=label,
                 linestyle="solid",  # type: ignore
                 markevery=10,
                 marker=_marker,
                 linewidth=3,
             )
+
             ax.fill_between(
-                _data.index,  # type: ignore
+                _xs,
                 _means - _stds,
                 _means + _stds,
                 alpha=0.2,
                 color=_hue,
                 edgecolor=_hue,
-                marker=_marker,
                 linewidth=2,
                 step="post",
             )
+
+    ax.set_xlabel(xlabel if xlabel is not None else x)
+    ax.set_ylabel(ylabel if ylabel is not None else y)
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)

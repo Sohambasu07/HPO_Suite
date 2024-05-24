@@ -34,6 +34,7 @@ class SyneTuneOptimizer(Optimizer):
         self,
         *,
         problem: Problem,
+        seed: int,
         working_directory: Path,
         optimizer: TrialScheduler,
     ):
@@ -98,6 +99,7 @@ class SyneTuneBO(SyneTuneOptimizer):
         self,
         *,
         problem: Problem,
+        seed: int,
         working_directory: Path,
         config_space: CS.ConfigurationSpace | list[Config],
         **kwargs: Any,
@@ -106,6 +108,7 @@ class SyneTuneBO(SyneTuneOptimizer):
 
         Args:
             problem: The problem statement.
+            seed: The random seed.
             working_directory: The working directory to store the results.
             config_space: The configuration space.
             **kwargs: Additional arguments for the BayesianOptimization.
@@ -155,12 +158,13 @@ class SyneTuneBO(SyneTuneOptimizer):
 
         super().__init__(
             problem=problem,
+            seed=seed,
             working_directory=working_directory,
             optimizer=BayesianOptimization(
                 config_space=synetune_cs,
                 metric=metric_name,
                 mode=mode,
-                random_seed=problem.seed,
+                random_seed=seed,
                 **kwargs,
             ),
         )

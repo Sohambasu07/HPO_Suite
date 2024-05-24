@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from hpo_glue.benchmarks import BenchmarkDescription
     from hpo_glue.budget import BudgetType
     from hpo_glue.config import Config
-    from hpo_glue.problem import Problem
+    from hpo_glue.problem import Problem, Run
     from hpo_glue.query import Query
     from hpo_glue.result import Result
 
@@ -40,6 +40,7 @@ class Optimizer(ABC):
         self,
         *,
         problem: Problem,
+        seed: int,
         config_space: list[Config] | ConfigurationSpace,
         working_directory: Path,
         **optimizer_kwargs: Any,
@@ -48,6 +49,7 @@ class Optimizer(ABC):
 
         Args:
             problem: The problem to optimize over
+            seed: The random seed for the optimizer
             config_space: The configuration space to optimize over
             working_directory: The directory to save the optimizer's state
             optimizer_kwargs: Any additional hyperparameters for the optimizer
@@ -75,7 +77,7 @@ class Optimizer(ABC):
         costs: int = 0,
         multi_objective_generation: Literal["mix_metric_cost", "metric_only"] = "mix_metric_cost",
         on_error: Literal["warn", "raise", "ignore"] = "warn",
-    ) -> Iterator[Problem]:
+    ) -> Iterator[Run]:
         """Generate a set of problems for the given optimizer and benchmark.
 
         If there is some incompatibility between the optimizer, the benchmark and the requested

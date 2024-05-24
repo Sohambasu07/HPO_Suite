@@ -97,7 +97,6 @@ def _lcbench_tabular(
         table=bench.table,
         id_key="id",  # Key in the table to uniquely identify configs
         config_keys=bench.config_keys,  # Keys in the table that correspond to configs
-        result_keys=bench.result_keys,  # Key in the table that corresponds to the result
     )
 
 

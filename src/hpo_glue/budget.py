@@ -1,16 +1,10 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, TypeAlias
-from typing_extensions import Self
-
-if TYPE_CHECKING:
-    from hpo_glue.problem import Problem
-    from hpo_glue.result import Result
+from dataclasses import dataclass, field
+from typing import TypeAlias
 
 
-@dataclass
+@dataclass(frozen=True)
 class TrialBudget:
     """A budget for the number of trials to run."""
 
@@ -35,55 +29,7 @@ class TrialBudget:
     equate to (0.4 + 0.6) / 2 = 0.5 towards the budget.
     """
 
-    used_budget: float = 0.0
-
-    def calculate_used_budget(self, *, result: Result, problem: Problem) -> float:
-        """Calculate the used budget for a given result.
-
-        Args:
-            result: The result of the trial.
-            problem: The original problem statement.
-
-        Returns:
-            The amount of budget used for this result.
-        """
-        match problem.fidelity:
-            case None:
-                return 1
-            case (_, fidelity_desc):
-                assert isinstance(result.fidelity, tuple)
-                fid_value = result.fidelity[1]
-                assert isinstance(fid_value, int | float)
-                return fidelity_desc.normalize(fid_value)
-            case Mapping():
-                assert problem.benchmark.fidelities is not None
-                assert isinstance(result.fidelity, dict)
-
-                normed_fidelities = []
-                n_fidelities = len(result.fidelity)
-                for k, v in result.fidelity.items():
-                    fidelity_desc = problem.benchmark.fidelities[k]
-                    norm_fidelity = fidelity_desc.normalize(v)
-                    normed_fidelities.append(norm_fidelity)
-
-                return sum(normed_fidelities) / n_fidelities
-            case _:
-                raise TypeError("Fidelity must be None, str, or list[str]")
-
-    def update(self, *, result: Result, problem: Problem) -> float:
-        """Update the budget with the result of a trial.
-
-        Args:
-            result: The result of the trial.
-            problem: The original problem statement.
-        """
-        used_budget = self.calculate_used_budget(result=result, problem=problem)
-        self.used_budget += used_budget
-        return used_budget
-
-    def should_stop(self) -> bool:
-        """Check if the budget has been used up."""
-        return self.used_budget >= self.total
+    minimum_fidelity_normalized_value: float = field(default=0.01, repr=False)
 
     @property
     def path_str(self) -> str:
@@ -91,12 +37,8 @@ class TrialBudget:
         clsname = self.__class__.__name__
         return f"{clsname}={self.total}"
 
-    def clone(self) -> Self:
-        """Return a clone of the budget."""
-        return replace(self)
 
-
-@dataclass(kw_only=True)
+@dataclass(frozen=True)
 class CostBudget:
     """A budget for the cost of the trials to run."""
 
@@ -105,40 +47,11 @@ class CostBudget:
     def __post_init__(self):
         raise NotImplementedError("Cost budgets not yet supported")
 
-    def update(self, *, result: Result, problem: Problem) -> float:
-        """Update the budget with the result of a trial.
-
-        Args:
-            result: The result of the trial.
-            problem: The original problem statement.
-        """
-        raise NotImplementedError("Cost budgets not yet supported")
-
-    def should_stop(self) -> bool:
-        """Check if the budget has been used up."""
-        raise NotImplementedError("Cost budgets not yet supported")
-
-    def calculate_used_budget(self, *, result: Result, problem: Problem) -> float:
-        """Calculate the used budget for a given result.
-
-        Args:
-            result: The result of the trial.
-            problem: The original problem statement.
-
-        Returns:
-            The amount of budget used for this result.
-        """
-        raise NotImplementedError("Cost budgets not yet supported")
-
     @property
     def path_str(self) -> str:
         """Return a string representation of the budget."""
         clsname = self.__class__.__name__
         return f"{clsname}={self.total}"
-
-    def clone(self) -> Self:
-        """Return a clone of the budget."""
-        return replace(self)
 
 
 BudgetType: TypeAlias = TrialBudget | CostBudget

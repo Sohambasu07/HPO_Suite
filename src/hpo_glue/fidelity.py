@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
-from dataclasses import dataclass, field
+from collections.abc import Iterator, Sequence
+from dataclasses import dataclass
 from typing import Generic, Protocol, TypeVar, runtime_checkable
 
 
@@ -25,30 +25,37 @@ class Fidelity(Protocol[T]):
     supports_continuation: bool
 
     def __iter__(self) -> Iterator[T]: ...
-    def normalize(self, value: T) -> float: ...
 
 
-@dataclass(kw_only=True)
+@dataclass(kw_only=True, frozen=True)
 class ListFidelity(Generic[T]):
     kind: type[T]
-    values: list[T]
+    values: tuple[T, ...]
     supports_continuation: bool
-    min: T = field(init=False)
-    max: T = field(init=False)
+    min: T
+    max: T
 
-    def __post_init__(self):
-        self.min = min(self.values)
-        self.max = max(self.values)
+    @classmethod
+    def from_seq(
+        cls,
+        values: Sequence[T],
+        *,
+        supports_continuation: bool = False,
+    ) -> ListFidelity[T]:
+        vs = sorted(values)
+        return cls(
+            kind=type(vs[0]),
+            values=tuple(vs),
+            supports_continuation=supports_continuation,
+            min=vs[0],
+            max=vs[-1],
+        )
 
     def __iter__(self) -> Iterator[T]:
         return iter(self.values)
 
-    def normalize(self, value: T) -> float:
-        """Normalize a value to the range [0, 1]."""
-        return (value - self.min) / (self.max - self.min)
 
-
-@dataclass(kw_only=True)
+@dataclass(kw_only=True, frozen=True)
 class RangeFidelity(Generic[T]):
     kind: type[T]
     min: T
@@ -89,7 +96,3 @@ class RangeFidelity(Generic[T]):
             stepsize=values[2],
             supports_continuation=supports_continuation,
         )
-
-    def normalize(self, value: T) -> float:
-        """Normalize a value to the range [0, 1]."""
-        return (value - self.min) / (self.max - self.min)

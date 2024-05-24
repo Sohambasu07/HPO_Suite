@@ -31,6 +31,9 @@ class Result:
     budget_cost: float = np.nan
     """The amount of budget used to generate this result."""
 
+    budget_used_total: float = np.nan
+    """The amount of budget used in total."""
+
     trajectory: pd.DataFrame | None = None
     """If given, the trajectory of the query up to the given fidelity.
 

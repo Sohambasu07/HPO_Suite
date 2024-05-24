@@ -42,6 +42,7 @@ class SMAC_Optimizer(Optimizer):
         self,
         *,
         problem: Problem,
+        seed: int,
         working_directory: Path,
         config_space: list[Config] | ConfigurationSpace,
         optimizer: AbstractFacade,
@@ -51,6 +52,7 @@ class SMAC_Optimizer(Optimizer):
 
         Args:
             problem: Problem statement.
+            seed: Random seed for the optimizer.
             working_directory: Working directory to store SMAC run.
             config_space: Configuration space to optimize over.
             optimizer: SMAC optimizer instance.
@@ -62,6 +64,7 @@ class SMAC_Optimizer(Optimizer):
         self.config_space = config_space
         self._trial_lookup: dict[Hashable, TrialInfo] = {}
         self._fidelity = fidelity
+        self._seed = seed
 
     def ask(self) -> Query:
         """Ask SMAC for a new config to evaluate."""
@@ -134,6 +137,7 @@ class SMAC_BO(SMAC_Optimizer):
         self,
         *,
         problem: Problem,
+        seed: int,
         working_directory: Path,
         config_space: ConfigurationSpace | list[Config],
         xi: float = 0.0,
@@ -142,6 +146,7 @@ class SMAC_BO(SMAC_Optimizer):
 
         Args:
             problem: Problem statement.
+            seed: Random seed for the optimizer.
             working_directory: Working directory to store SMAC run.
             config_space: Configuration space to optimize over.
             xi: Exploration-exploitation trade-off parameter. Defaults to 0.0.
@@ -185,13 +190,14 @@ class SMAC_BO(SMAC_Optimizer):
             deterministic=True,
             objectives=metric_names,
             n_trials=budget,
-            seed=problem.seed,
+            seed=seed,
             output_directory=working_directory / "smac-output",
             min_budget=None,
             max_budget=None,
         )
         super().__init__(
             problem=problem,
+            seed=seed,
             config_space=config_space,
             working_directory=working_directory,
             fidelity=None,
@@ -221,6 +227,7 @@ class SMAC_Hyperband(SMAC_Optimizer):
         self,
         *,
         problem: Problem,
+        seed: int,
         working_directory: Path,
         config_space: ConfigurationSpace | list[Config],
         eta: int = 3,
@@ -229,6 +236,7 @@ class SMAC_Hyperband(SMAC_Optimizer):
 
         Args:
             problem: Problem statement.
+            seed: Random seed for the optimizer.
             working_directory: Working directory to store SMAC run.
             config_space: Configuration space to optimize over.
             eta: Hyperband eta parameter. Defaults to 3.
@@ -277,13 +285,14 @@ class SMAC_Hyperband(SMAC_Optimizer):
             deterministic=True,
             objectives=metric_names,
             n_trials=budget,
-            seed=problem.seed,
+            seed=seed,
             output_directory=working_directory / "smac-output",
             min_budget=min_fidelity,
             max_budget=max_fidelity,
         )
         super().__init__(
             problem=problem,
+            seed=seed,
             config_space=config_space,
             working_directory=working_directory,
             fidelity=_fid,

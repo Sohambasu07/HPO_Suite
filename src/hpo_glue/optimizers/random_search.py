@@ -35,6 +35,7 @@ class RandomSearch(Optimizer):
         self,
         *,
         problem: Problem,
+        seed: int,
         working_directory: Path,  # noqa: ARG002
         config_space: ConfigurationSpace | list[Config],
     ):
@@ -42,7 +43,7 @@ class RandomSearch(Optimizer):
         match config_space:
             case ConfigurationSpace():
                 self.config_space = copy.deepcopy(config_space)
-                self.config_space.seed(problem.seed)
+                self.config_space.seed(seed)
             case list():
                 self.config_space = config_space
             case _:
@@ -50,7 +51,7 @@ class RandomSearch(Optimizer):
 
         self.problem = problem
         self._counter = 0
-        self.rng = np.random.default_rng(problem.seed)
+        self.rng = np.random.default_rng(seed)
 
     def ask(self) -> Query:
         """Ask the optimizer for a new config to evaluate."""

@@ -46,6 +46,7 @@ class OptunaOptimizer(Optimizer):
         self,
         *,
         problem: Problem,
+        seed: int,
         working_directory: Path,
         config_space: list[Config] | CS.ConfigurationSpace,
         **kwargs: Any,
@@ -64,19 +65,19 @@ class OptunaOptimizer(Optimizer):
         match problem.objective:
             case (_, objective):
                 self.optimizer = optuna.create_study(
-                    sampler=TPESampler(seed=problem.seed, **kwargs),
+                    sampler=TPESampler(seed=seed, **kwargs),
                     storage=None,
                     pruner=None,  # TODO(eddiebergman): Figure out how to use this for MF
-                    study_name=problem.name,
+                    study_name=f"{problem.name}-{seed}",
                     load_if_exists=False,
                     direction="minimize" if objective.minimize else "maximize",
                 )
             case Mapping():
                 self.optimizer = optuna.create_study(
-                    sampler=NSGAIISampler(seed=problem.seed, **kwargs),
+                    sampler=NSGAIISampler(seed=seed, **kwargs),
                     storage=None,
                     pruner=None,  # TODO(eddiebergman): Figure out how to use this for MF
-                    study_name=problem.name,
+                    study_name=f"{problem.name}-{seed}",
                     load_if_exists=False,
                     directions=[
                         "minimize" if obj.minimize else "maximize"

@@ -10,7 +10,7 @@ from more_itertools import roundrobin, take
 from hpo_glue.benchmark import BenchmarkDescription
 from hpo_glue.budget import CostBudget, TrialBudget
 from hpo_glue.optimizer import Optimizer
-from hpo_glue.problem import Problem
+from hpo_glue.problem import Run
 
 if TYPE_CHECKING:
     from hpo_glue.budget import BudgetType
@@ -51,7 +51,7 @@ def _generate_problem_set(  # noqa: C901, PLR0911, PLR0912, PLR0915
     costs: int = 0,
     multi_objective_generation: Literal["mix_metric_cost", "metric_only"] = "mix_metric_cost",
     on_error: Literal["warn", "raise", "ignore"] = "warn",
-) -> Iterator[Problem]:
+) -> Iterator[Run]:
     errhandler = lambda etype, msg: _on_error(etype, msg, on_error)
     optimizer: type[Optimizer]
     hps: Mapping[str, Any]
@@ -238,7 +238,7 @@ def _generate_problem_set(  # noqa: C901, PLR0911, PLR0912, PLR0915
 
     _seeds = [seeds] if isinstance(seeds, int) else seeds
     for seed in _seeds:
-        yield Problem(
+        yield Run(
             optimizer=optimizer,
             benchmark=benchmark,
             expdir=Path(expdir),
