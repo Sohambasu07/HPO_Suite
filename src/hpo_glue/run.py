@@ -1,21 +1,21 @@
 from __future__ import annotations
 
 import logging
-import warnings
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeAlias
 
+import numpy as np
 import pandas as pd
 
 from hpo_glue.budget import CostBudget, TrialBudget
 from hpo_glue.config import Config
+from hpo_glue.dataframe_utils import reduce_dtypes
 from hpo_glue.optimizer import Optimizer
 from hpo_glue.query import Query
 from hpo_glue.result import Result
-from hpo_glue.utils import reduce_dtypes
 
 if TYPE_CHECKING:
     from hpo_glue.benchmark import BenchmarkDescription
@@ -97,8 +97,15 @@ class Run:
         def __post_init__(self) -> None:
             self.problem = self.run.problem
 
-        def df(self) -> pd.DataFrame:  # noqa: C901, PLR0915
+        def df(  # noqa: C901, PLR0912, PLR0915
+            self,
+            *,
+            incumbent_trajectory: bool = False,
+        ) -> pd.DataFrame:
             """Return the history as a pandas DataFrame.
+
+            Args:
+                incumbent_trajectory: Whether to only include the incumbents trajectory.
 
             Returns:
                 The history as a pandas DataFrame.
@@ -241,17 +248,49 @@ class Run:
             else:
                 _df["run.opt.hp_str"] = "default"
 
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", RuntimeWarning)
-                _df = _df.convert_dtypes()
+            _df = _df.sort_values("result.budget_used_total", ascending=True)
 
-            cat_cols = [
-                c
-                for c in _df.select_dtypes(include=["string", object]).columns
-                if c not in ("config.id", "query.id")
-            ]
-            _df[cat_cols] = _df[cat_cols].astype("category")
-            return reduce_dtypes(_df, reduce_int=True, reduce_float=True)
+            _df = reduce_dtypes(
+                _df,
+                reduce_int=True,
+                reduce_float=True,
+                categories=True,
+                categories_exclude=("config.id", "query.id"),
+            )
+
+            if incumbent_trajectory:
+                if not isinstance(self.problem.objective, tuple):
+                    raise ValueError(
+                        "Incumbent trajectory only supported for single objective."
+                        f" Problem {self.problem.name} has {len(self.problem.objective)} objectives"
+                        f" for run {self.run.name}"
+                    )
+
+                if self.problem.objective[1].minimize:
+                    _df["_tmp_"] = _df["result.objective.1.value"].cummin()
+                else:
+                    _df["_tmp_"] = _df["result.objective.1.value"].cummax()
+
+                _df = _df.drop_duplicates(subset="_tmp_", keep="first").drop(columns="_tmp_")  # type: ignore
+
+            match self.problem.objective:
+                case (_, measure):
+                    _low, _high = measure.bounds
+                    if not np.isinf(_low) and not np.isinf(_high):
+                        _df["result.objective.1.normalized_value"] = (
+                            _df["result.objective.1.value"] - _low
+                        ) / (_high - _low)
+                case Mapping():
+                    for i, (_, measure) in enumerate(self.problem.objective.items(), start=1):
+                        _low, _high = measure.bounds
+                        if not np.isinf(_low) and not np.isinf(_high):
+                            _df[f"result.objective.{i}.normalized_value"] = (
+                                _df[f"result.objective.{i}.value"] - _low
+                            ) / (_high - _low)
+                case _:
+                    raise TypeError("Objective must be a tuple (name, measure) or a mapping")
+
+            return _df
 
         @classmethod
         def from_df(cls, df: pd.DataFrame, run: Run) -> Run.Report:  # noqa: C901, PLR0915
@@ -355,6 +394,7 @@ class Run:
                     f"\n{dup_rows}"
                 )
 
+            df = df[this_run].sort_values("result.budget_used_total")  # noqa: PD901
             return cls(
                 run=run,
                 results=[_row_to_result(row) for _, row in df[this_run].iterrows()],

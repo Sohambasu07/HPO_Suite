@@ -4,6 +4,8 @@ import logging
 import traceback
 import warnings
 from collections.abc import Collection, Mapping
+from contextlib import nullcontext
+from functools import partial
 from typing import TYPE_CHECKING, Literal
 
 import pandas as pd
@@ -41,6 +43,7 @@ def _run(
     *,
     overwrite: Collection[Run.State],
     on_error: Literal["raise", "continue"] = "raise",
+    progress_bar: bool = True,
 ) -> Run.Report:
     if on_error not in ("raise", "continue"):
         raise ValueError(f"Invalid value for `on_error`: {on_error}")
@@ -87,6 +90,7 @@ def _run(
                 budget_total=budget_total,
                 on_error=on_error,
                 minimum_normalized_fidelity=minimum_normalized_fidelity,
+                progress_bar=progress_bar,
             )
         case CostBudget():
             raise NotImplementedError("CostBudget not yet implemented")
@@ -108,16 +112,22 @@ def _run_problem_with_trial_budget(
     budget_total: int,
     on_error: Literal["raise", "continue"],
     minimum_normalized_fidelity: float,
+    progress_bar: bool,
 ) -> Run.Report:
     used_budget: float = 0.0
 
     history: list[Result] = []
 
+    if progress_bar:
+        ctx = partial(tqdm, desc=f"{run.name}", total=run.problem.budget.total)
+    else:
+        ctx = partial(nullcontext, None)
+
     # NOTE(eddiebergman): Ignore the tqdm warning about the progress bar going past max
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=TqdmWarning)
 
-        with tqdm(desc=f"{run.name}", total=run.problem.budget.total) as pbar:
+        with ctx() as pbar:
             while used_budget < budget_total:
                 try:
                     query = optimizer.ask()
@@ -135,7 +145,8 @@ def _run_problem_with_trial_budget(
 
                     optimizer.tell(result)
                     history.append(result)
-                    pbar.update(budget_cost)
+                    if pbar is not None:
+                        pbar.update(budget_cost)
                 except Exception as e:
                     experiment.set_state(run, Run.State.CRASHED, err_tb=(e, traceback.format_exc()))
                     logger.exception(e)

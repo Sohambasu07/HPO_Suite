@@ -6,22 +6,22 @@ import warnings
 from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from itertools import chain
+from multiprocessing import Pool, cpu_count
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, TypeAlias, TypeVar
 
 import pandas as pd
+from pandas.core.dtypes.missing import partial
 from tqdm import tqdm
 
 from hpo_glue.benchmark import BenchmarkDescription
 from hpo_glue.constants import DEFAULT_RELATIVE_EXP_DIR
+from hpo_glue.dataframe_utils import reduce_dtypes
 from hpo_glue.optimizer import Optimizer
 from hpo_glue.run import Run
-from hpo_glue.utils import reduce_dtypes
 
 if TYPE_CHECKING:
     from hpo_glue.budget import BudgetType
-    from hpo_glue.fidelity import Fidelity
-    from hpo_glue.measure import Measure
     from hpo_glue.problem import Problem
 
 OptWithHps: TypeAlias = tuple[type[Optimizer], Mapping[str, Any]]
@@ -56,7 +56,7 @@ class RunPaths:
         self.df_path = expdir / "dfs" / f"{run.name}.parquet"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Experiment:
     """An experiment to run."""
 
@@ -71,6 +71,7 @@ class Experiment:
         *,
         on_error: Literal["raise", "continue"] = "raise",
         overwrite: Run.State | str | Sequence[Run.State | str] | bool = False,
+        n_jobs: int = 1,
     ) -> Experiment.Report:
         """Run the Run.
 
@@ -89,15 +90,42 @@ class Experiment:
                  states.
                 * If `True`, overwrite problems in all states.
                 * If `False`, don't overwrite any problems.
+
+            n_jobs: The number of jobs to run in parallel.
         """
         from hpo_glue._run import _run
 
+        if n_jobs == -1:
+            n_jobs = cpu_count()
+        elif n_jobs == 0:
+            raise ValueError(f"n_jobs must be at least 1 or -1, got {n_jobs}")
+
         overwrites = Run.State.collect(overwrite)
 
-        reports = {}
-        for run in tqdm(self.runs, desc=f"Running {self.expdir}"):
-            report = _run(run=run, experiment=self, on_error=on_error, overwrite=overwrites)
-            reports[run.name] = report
+        n_jobs = min(n_jobs, len(self.runs))
+        reports: dict[str, Run.Report] = {}
+        if n_jobs == 1:
+            for run in tqdm(self.runs, desc=f"Running {self.expdir}"):
+                report = _run(run=run, experiment=self, on_error=on_error, overwrite=overwrites)
+                reports[run.name] = report
+
+            return Experiment.Report(experiment=self, reports=reports)
+
+        # Multiprocessing, set up the function to run then map it across the runs
+        _f = partial(
+            _run,
+            experiment=self,
+            on_error=on_error,
+            overwrite=overwrites,
+            progress_bar=False,  # Disable it since it's going to be at same time
+        )
+        with (
+            tqdm(total=len(self.runs), desc=f"Running {self.expdir}") as pbar,
+            Pool(n_jobs) as executor,
+        ):
+            for report in executor.imap_unordered(_f, self.runs):
+                reports[report.run.name] = report
+                pbar.update(1)
 
         return Experiment.Report(experiment=self, reports=reports)
 
@@ -295,6 +323,24 @@ class Experiment:
         """Get the paths for the run."""
         return RunPaths(run=run, expdir=self.expdir)
 
+    def groupby_problem(self) -> list[tuple[Problem, Experiment]]:
+        """Group the experiments by problem."""
+        _d: dict[str, list[Run]] = {}
+        _problems: dict[str, Problem] = {}
+        for run in self.runs:
+            _d.setdefault(run.problem.name, []).append(run)
+            _name = run.problem.name
+            existing = _problems.get(_name)
+            if existing is not None:
+                assert existing == run.problem
+            else:
+                _problems[run.problem.name] = run.problem
+
+        return [
+            (problem, Experiment(runs=_d[problem_name], expdir=self.expdir))
+            for problem_name, problem in _problems.items()
+        ]
+
     @dataclass
     class Report:
         """The report for an experiment."""
@@ -305,38 +351,53 @@ class Experiment:
         reports: Mapping[str, Run.Report] = field(default_factory=dict)
         """The reports."""
 
-        def groupby(
-            self,
-            key: Callable[[Run.Report], T],
-        ) -> list[tuple[T, Experiment.Report]]:
+        def groupby_problem(self) -> list[tuple[Problem, Experiment.Report]]:
             """Group the experiments by a key."""
-            groups: dict[T, list[Run.Report]] = {}
+            _d: dict[str, list[Run.Report]] = {}
+            _problems: dict[str, Problem] = {}
             for report in self.reports.values():
-                groups.setdefault(key(report), []).append(report)
+                _d.setdefault(report.problem.name, []).append(report)
+                _name = report.problem.name
+                existing = _problems.get(_name)
+                if existing is not None:
+                    print(existing, report.problem)  # noqa: T201
+                    assert existing == report.problem
+                else:
+                    _problems[report.problem.name] = report.problem
 
             return [
                 (
-                    k,
+                    problem,
                     Experiment.Report(
-                        experiment=Experiment(runs=[report.run for report in reports]),
-                        reports={report.run.name: report for report in reports},
+                        experiment=Experiment(
+                            runs=[report.run for report in _d[problem_name]],
+                            expdir=self.experiment.expdir,
+                        ),
+                        reports={report.run.name: report for report in _d[problem_name]},
                     ),
                 )
-                for k, reports in groups.items()
+                for problem_name, problem in _problems.items()
             ]
 
-        def df(self) -> pd.DataFrame:
+        def df(
+            self,
+            *,
+            incumbent_trajectory: bool = False,
+        ) -> pd.DataFrame:
             """Return a dictionary of dataframes of all problems."""
-            dfs = [report.df() for report in self.reports.values()]
+            dfs = [
+                report.df(incumbent_trajectory=incumbent_trajectory)
+                for report in self.reports.values()
+            ]
             _df = pd.concat(dfs, axis=0)
             _df = _df.convert_dtypes()
-            cat_cols = [
-                c
-                for c in _df.select_dtypes(include=["string", object]).columns
-                if c not in ("config.id", "query.id")
-            ]
-            _df[cat_cols] = _df[cat_cols].astype("category")
-            return reduce_dtypes(_df, reduce_int=True, reduce_float=True)
+            return reduce_dtypes(
+                _df,
+                reduce_int=True,
+                reduce_float=True,
+                categories=True,
+                categories_exclude=("config.id", "query.id"),
+            )
 
         @classmethod
         def from_reports(cls, reports: list[Run.Report]) -> Experiment.Report:
@@ -347,19 +408,7 @@ class Experiment:
                 reports={report.problem.name: report for report in reports},
             )
 
-        def groupby_for_optimizer_comparison(
-            self,
-        ) -> list[
-            tuple[
-                tuple[
-                    str,
-                    BudgetType,
-                    tuple[tuple[str, Measure], ...],
-                    None | tuple[tuple[str, Fidelity], ...],
-                    None | tuple[tuple[str, Measure], ...],
-                ],
-                Experiment.Report,
-            ]
-        ]:
-            """Group the experiments by benchmark."""
-            return list(self.groupby(lambda r: r.problem.group_for_optimizer_comparison()))
+        def plot_per_problem(self) -> None:
+            """Plot the results per problem."""
+            for _problem, _report in self.groupby_problem():
+                pass

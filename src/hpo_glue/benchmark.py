@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeAlias, TypeVar
 
 import pandas as pd
@@ -58,7 +58,7 @@ class BenchmarkDescription:
     name: str
     """Unique name of the benchmark."""
 
-    load: Callable[[BenchmarkDescription], Benchmark]
+    load: Callable[[BenchmarkDescription], Benchmark] = field(compare=False)
     """Function to load the benchmark."""
 
     metrics: Mapping[str, Measure]
