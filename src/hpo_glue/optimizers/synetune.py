@@ -9,9 +9,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 import ConfigSpace as CS  # noqa: N817
-from syne_tune.backend.trial_status import Trial
-from syne_tune.config_space import Domain, choice, lograndint, loguniform, ordinal, randint, uniform
-from syne_tune.optimizer.baselines import BayesianOptimization
 
 from hpo_glue.config import Config
 from hpo_glue.optimizer import Optimizer
@@ -19,6 +16,9 @@ from hpo_glue.problem import Problem
 from hpo_glue.query import Query
 
 if TYPE_CHECKING:
+    from syne_tune.config_space import (
+        Domain,
+    )
     from syne_tune.optimizer.scheduler import TrialScheduler
 
     from hpo_glue.result import Result
@@ -46,6 +46,8 @@ class SyneTuneOptimizer(Optimizer):
 
     def ask(self) -> Query:
         """Get a configuration from the optimizer."""
+        from syne_tune.backend.trial_status import Trial
+
         self._counter += 1
         trial_suggestion = self.optimizer.suggest(self._counter)
         assert trial_suggestion is not None
@@ -113,6 +115,8 @@ class SyneTuneBO(SyneTuneOptimizer):
             config_space: The configuration space.
             **kwargs: Additional arguments for the BayesianOptimization.
         """
+        from syne_tune.optimizer.baselines import BayesianOptimization
+
         match problem.fidelity:
             case None:
                 pass
@@ -174,6 +178,15 @@ def configspace_to_synetune_configspace(
     config_space: CS.ConfigurationSpace,
 ) -> dict[str, Domain | Any]:
     """Convert ConfigSpace to SyneTune config_space."""
+    from syne_tune.config_space import (
+        choice,
+        lograndint,
+        loguniform,
+        ordinal,
+        randint,
+        uniform,
+    )
+
     if any(config_space.get_conditions()):
         raise NotImplementedError("ConfigSpace with conditions not supported")
 

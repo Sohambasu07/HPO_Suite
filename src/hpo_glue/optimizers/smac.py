@@ -5,22 +5,17 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, NoReturn
 
 from ConfigSpace import ConfigurationSpace
-from smac import (
-    BlackBoxFacade as BOFacade,
-    HyperbandFacade as HBFacade,
-    Scenario,
-)
-from smac.runhistory.dataclasses import TrialInfo, TrialValue
-from smac.runhistory.enumerations import StatusType
 
 from hpo_glue.budget import CostBudget, TrialBudget
 from hpo_glue.config import Config
+from hpo_glue.env import Env
 from hpo_glue.optimizer import Optimizer
 from hpo_glue.problem import Problem
 from hpo_glue.query import Query
 
 if TYPE_CHECKING:
     from smac.facade import AbstractFacade
+    from smac.runhistory import TrialInfo
 
     from hpo_glue.problem import Fidelity
     from hpo_glue.result import Result
@@ -36,7 +31,7 @@ class SMAC_Optimizer(Optimizer):
     # TODO: Document me
     """
 
-    name = "SMAC-base"
+    env = Env(name="SMAC-2.1", python_version="3.10", requirements=("smac==2.1",))
 
     def __init__(
         self,
@@ -97,6 +92,8 @@ class SMAC_Optimizer(Optimizer):
 
     def tell(self, result: Result) -> None:
         """Tell SMAC the result of the query."""
+        from smac.runhistory import StatusType, TrialValue
+
         match self.problem.objective:
             case Mapping():
                 cost = [
@@ -125,7 +122,8 @@ class SMAC_Optimizer(Optimizer):
 class SMAC_BO(SMAC_Optimizer):
     """SMAC Bayesian Optimization."""
 
-    name = "SMAC_BO"
+    name = "SMAC_BO_2.1"
+
     support = Problem.Support(
         fidelities=(None,),
         objectives=("single", "many"),
@@ -185,6 +183,8 @@ class SMAC_BO(SMAC_Optimizer):
             case _:
                 raise TypeError("Budget must be a TrialBudget or a CostBudget!")
 
+        from smac import BlackBoxFacade, Scenario
+
         scenario = Scenario(
             configspace=config_space,
             deterministic=True,
@@ -201,12 +201,12 @@ class SMAC_BO(SMAC_Optimizer):
             config_space=config_space,
             working_directory=working_directory,
             fidelity=None,
-            optimizer=BOFacade(
+            optimizer=BlackBoxFacade(
                 scenario=scenario,
                 logging_level=False,
                 target_function=_dummy_target_function,
-                intensifier=BOFacade.get_intensifier(scenario),
-                acquisition_function=BOFacade.get_acquisition_function(scenario, xi=xi),
+                intensifier=BlackBoxFacade.get_intensifier(scenario),
+                acquisition_function=BlackBoxFacade.get_acquisition_function(scenario, xi=xi),
                 overwrite=True,
             ),
         )
@@ -215,7 +215,7 @@ class SMAC_BO(SMAC_Optimizer):
 class SMAC_Hyperband(SMAC_Optimizer):
     """SMAC Hyperband."""
 
-    name = "SMAC-Hyperband"
+    name = "SMAC_BO_2.1"
     support = Problem.Support(
         fidelities=("single",),
         objectives=("single", "many"),
@@ -280,6 +280,8 @@ class SMAC_Hyperband(SMAC_Optimizer):
             case _:
                 raise TypeError("Budget must be a TrialBudget or a CostBudget!")
 
+        from smac import HyperbandFacade, Scenario
+
         scenario = Scenario(
             configspace=config_space,
             deterministic=True,
@@ -296,11 +298,11 @@ class SMAC_Hyperband(SMAC_Optimizer):
             config_space=config_space,
             working_directory=working_directory,
             fidelity=_fid,
-            optimizer=HBFacade(
+            optimizer=HyperbandFacade(
                 scenario=scenario,
                 logging_level=False,
                 target_function=_dummy_target_function,
-                intensifier=HBFacade.get_intensifier(scenario, eta=eta),
+                intensifier=HyperbandFacade.get_intensifier(scenario, eta=eta),
                 overwrite=True,
             ),
         )

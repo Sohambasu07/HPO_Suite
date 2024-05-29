@@ -5,9 +5,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ConfigSpace import ConfigurationSpace
-from dehb import DEHB
 
 from hpo_glue.config import Config
+from hpo_glue.env import Env
 from hpo_glue.optimizer import Optimizer
 from hpo_glue.problem import Problem
 from hpo_glue.query import Query
@@ -22,7 +22,12 @@ class DEHB_Optimizer(Optimizer):
     TODO: Document me
     """
 
-    name = "DEHB"
+    name = "DEHB-0.1.1"
+    env = Env(
+        name="dehb-0.1.1",
+        python_version="3.10",
+        requirements=("dehb==0.1.1",),
+    )
 
     support = Problem.Support(
         fidelities=(None, "single"),
@@ -43,6 +48,8 @@ class DEHB_Optimizer(Optimizer):
         # TODO(eddiebergman): Add more DEHB parameters
     ):
         """Create a DEHB Optimizer instance for a given problem statement."""
+        from dehb import DEHB
+
         match config_space:
             case ConfigurationSpace():
                 pass

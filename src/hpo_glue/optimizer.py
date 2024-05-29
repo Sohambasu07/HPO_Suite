@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 from hpo_glue.constants import DEFAULT_RELATIVE_EXP_DIR
+from hpo_glue.env import Env
 
 if TYPE_CHECKING:
     from ConfigSpace import ConfigurationSpace
@@ -33,6 +34,12 @@ class Optimizer(ABC):
     If `True` and the problem is multi-fidelity (1 fidelity) and the fidelity
     supports continuations (e.g. epochs), then a trajectory will be provided in
     the `Result` object provided during the `tell` to the optimizer.
+    """
+
+    env: ClassVar[Env] = Env.empty()
+    """The environment to setup the optimizer in for `isolated` mode.
+
+    If left as `None`, the currently activated environemnt will be used.
     """
 
     @abstractmethod

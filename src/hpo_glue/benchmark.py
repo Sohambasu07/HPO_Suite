@@ -10,6 +10,7 @@ from more_itertools import roundrobin, take
 
 from hpo_glue.budget import CostBudget, TrialBudget
 from hpo_glue.config import Config
+from hpo_glue.env import Env
 from hpo_glue.optimizer import Optimizer
 from hpo_glue.problem import Problem
 from hpo_glue.result import Result
@@ -78,6 +79,9 @@ class BenchmarkDescription:
 
     is_tabular: bool = False
     """Whether the benchmark is tabular."""
+
+    env: Env = field(default_factory=Env.empty)
+    """The environment needed to run this benchmark."""
 
     def problem(  # noqa: C901, PLR0912
         self,

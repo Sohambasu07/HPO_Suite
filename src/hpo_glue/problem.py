@@ -15,12 +15,11 @@ from hpo_glue.measure import Measure
 from hpo_glue.optimizer import Optimizer
 from hpo_glue.query import Query
 from hpo_glue.result import Result
-from hpo_glue.run import Run
 
 if TYPE_CHECKING:
     from hpo_glue.benchmark import BenchmarkDescription
     from hpo_glue.budget import BudgetType
-    from hpo_glue.experiment import Experiment
+    from hpo_glue.run import Run
 
 logger = logging.getLogger(__name__)
 
@@ -157,7 +156,7 @@ class Problem:
 
         self.name = ".".join(name_parts)
 
-    def experiment(
+    def generate_runs(
         self,
         optimizers: (
             type[Optimizer]
@@ -168,7 +167,7 @@ class Problem:
         *,
         expdir: Path | str = DEFAULT_RELATIVE_EXP_DIR,
         seeds: Iterable[int],
-    ) -> Experiment:
+    ) -> list[Run]:
         """Generate a set of problems for the given optimizer and benchmark.
 
         If there is some incompatibility between the optimizer, the benchmark and the requested
@@ -185,7 +184,7 @@ class Problem:
         Returns:
             An experiment object with the generated problems.
         """
-        from hpo_glue.experiment import Experiment
+        from hpo_glue.run import Run
 
         _seeds = list(seeds)
         _optimizers: list[OptWithHps]
@@ -202,13 +201,16 @@ class Problem:
             support: Problem.Support = opt.support
             support.check_opt_support(who=opt.name, problem=self)
 
-        return Experiment(
-            runs=[
-                Run(problem=self, optimizer=opt, optimizer_hyperparameters=hps, seed=_seed)
-                for _seed, (opt, hps) in product(_seeds, _optimizers)
-            ],
-            expdir=Path(expdir),
-        )
+        return [
+            Run(
+                problem=self,
+                optimizer=opt,
+                optimizer_hyperparameters=hps,
+                seed=_seed,
+                expdir=Path(expdir),
+            )
+            for _seed, (opt, hps) in product(_seeds, _optimizers)
+        ]
 
     def group_for_optimizer_comparison(
         self,
@@ -242,6 +244,96 @@ class Problem:
                 _cost = tuple(self.cost.items())
 
         return (self.benchmark.name, self.budget, _obj, _fid, _cost)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "objective": (
+                list(self.objective.keys())
+                if isinstance(self.objective, Mapping)
+                else self.objective[0]
+            ),
+            "fidelity": (
+                None
+                if self.fidelity is None
+                else (
+                    list(self.fidelity.keys())
+                    if isinstance(self.fidelity, Mapping)
+                    else self.fidelity[0]
+                )
+            ),
+            "cost": (
+                None
+                if self.cost is None
+                else (list(self.cost.keys()) if isinstance(self.cost, Mapping) else self.cost[0])
+            ),
+            "budget_type": self.budget.name,
+            "budget": self.budget.to_dict(),
+            "benchmark": self.benchmark.name,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Problem:
+        from hpo_glue.benchmarks import BENCHMARKS
+
+        if data["benchmark"] not in BENCHMARKS:
+            raise ValueError(
+                f"Benchmark {data['benchmark']} not found in benchmarks!"
+                " Please make sure your benchmark is registed in `BENCHMARKS`"
+                " before loading/parsing."
+            )
+
+        benchmark = BENCHMARKS[data["benchmark"]]
+        _obj = data["objective"]
+        match _obj:
+            case str():
+                objective = (_obj, benchmark.metrics[_obj])
+            case list():
+                objective = {name: benchmark.metrics[name] for name in _obj}
+            case _:
+                raise ValueError("Objective must be a string or a list of strings")
+
+        _fid = data["fidelity"]
+        match _fid:
+            case None:
+                fidelity = None
+            case str():
+                assert benchmark.fidelities is not None
+                fidelity = (_fid, benchmark.fidelities[_fid])
+            case list():
+                assert benchmark.fidelities is not None
+                fidelity = {name: benchmark.fidelities[name] for name in _fid}
+            case _:
+                raise ValueError("Fidelity must be a string or a list of strings")
+
+        _cost = data["cost"]
+        match _cost:
+            case None:
+                cost = None
+            case str():
+                assert benchmark.costs is not None
+                cost = (_cost, benchmark.costs[_cost])
+            case list():
+                assert benchmark.costs is not None
+                cost = {name: benchmark.costs[name] for name in _cost}
+            case _:
+                raise ValueError("Cost must be a string or a list of strings")
+
+        _budget_type = data["budget_type"]
+        match _budget_type:
+            case "trial_budget":
+                budget = TrialBudget.from_dict(data["budget"])
+            case "cost_budget":
+                budget = CostBudget.from_dict(data["budget"])
+            case _:
+                raise ValueError("Budget type must be 'trial_budget' or 'cost_budget'")
+
+        return cls(
+            objective=objective,
+            fidelity=fidelity,
+            cost=cost,
+            budget=budget,
+            benchmark=benchmark,
+        )
 
     @dataclass(kw_only=True)
     class Support:

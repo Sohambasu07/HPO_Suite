@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TypeAlias
+from typing import ClassVar, TypeAlias
 
 
 @dataclass(frozen=True)
 class TrialBudget:
     """A budget for the number of trials to run."""
+
+    name: ClassVar[str] = "trial_budget"
 
     total: int
     """Total amount of budget allowed for the optimizer for this problem.
@@ -37,15 +39,35 @@ class TrialBudget:
         clsname = self.__class__.__name__
         return f"{clsname}={self.total}"
 
+    def to_dict(self) -> dict[str, int]:
+        """Convert the budget to a dictionary."""
+        return {"total": self.total}
+
+    @classmethod
+    def from_dict(cls, data: dict[str, int]) -> TrialBudget:
+        """Convert a dictionary to a budget."""
+        return cls(total=data["total"])
+
 
 @dataclass(frozen=True)
 class CostBudget:
     """A budget for the cost of the trials to run."""
 
+    name: ClassVar[str] = "cost_budget"
+
     total: int | float
 
     def __post_init__(self):
         raise NotImplementedError("Cost budgets not yet supported")
+
+    def to_dict(self) -> dict[str, int | float]:
+        """Convert the budget to a dictionary."""
+        return {"total": self.total}
+
+    @classmethod
+    def from_dict(cls, data: dict[str, int | float]) -> CostBudget:
+        """Convert a dictionary to a budget."""
+        return cls(total=data["total"])
 
     @property
     def path_str(self) -> str:

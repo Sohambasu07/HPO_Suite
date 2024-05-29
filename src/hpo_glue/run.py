@@ -1,29 +1,58 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable, Mapping
+import shutil
+import subprocess
+import warnings
+from collections.abc import Hashable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TypeAlias
+from typing import TYPE_CHECKING, Any, Literal, TypeAlias, TypeVar
 
 import numpy as np
 import pandas as pd
+import yaml
 
+from hpo_glue.benchmark import BenchmarkDescription
 from hpo_glue.budget import CostBudget, TrialBudget
 from hpo_glue.config import Config
+from hpo_glue.constants import DEFAULT_RELATIVE_EXP_DIR
 from hpo_glue.dataframe_utils import reduce_dtypes
+from hpo_glue.env import (
+    GLUE_PYPI,
+    Env,
+    Venv,
+    get_current_installed_hpo_glue_version,
+)
 from hpo_glue.optimizer import Optimizer
+from hpo_glue.problem import Problem
 from hpo_glue.query import Query
 from hpo_glue.result import Result
 
 if TYPE_CHECKING:
-    from hpo_glue.benchmark import BenchmarkDescription
-    from hpo_glue.problem import Problem
+    from hpo_glue.budget import BudgetType
+
+
+OptWithHps: TypeAlias = tuple[type[Optimizer], Mapping[str, Any]]
+
+T = TypeVar("T", bound=Hashable)
+
 
 logger = logging.getLogger(__name__)
 
-OptWithHps: TypeAlias = tuple[type[Optimizer], Mapping[str, Any]]
+
+def _try_delete_if_exists(path: Path) -> None:
+    if path.exists():
+        try:
+            if path.is_dir():
+                shutil.rmtree(path)
+            else:
+                path.unlink()
+
+        except Exception as e:
+            logger.exception(e)
+            logger.error(f"Error deleting {path}: {e}")
 
 
 @dataclass
@@ -39,11 +68,50 @@ class Run:
     optimizer: type[Optimizer]
     """The optimizer to use for this problem statement"""
 
+    expdir: Path = field(default=DEFAULT_RELATIVE_EXP_DIR)
+    """Default directory to use for experiments."""
+
     optimizer_hyperparameters: Mapping[str, Any] = field(default_factory=dict)
     """The hyperparameters to use for the optimizer"""
 
     benchmark: BenchmarkDescription = field(init=False)
     """The benchmark that was run."""
+
+    env: Env = field(init=False)
+    """The environment to setup the optimizer in for `isolated` mode."""
+
+    working_dir: Path = field(init=False)
+    """The working directory for the run."""
+
+    complete_flag: Path = field(init=False)
+    """The flag to indicate the run is complete."""
+
+    error_file: Path = field(init=False)
+    """The file to store the error traceback if the run crashed."""
+
+    running_flag: Path = field(init=False)
+    """The flag to indicate the run is currently running."""
+
+    queue_flag: Path = field(init=False)
+    """The flag to indicate the run is queued."""
+
+    df_path: Path = field(init=False)
+    """The path to the dataframe for the run."""
+
+    venv_requirements_file: Path = field(init=False)
+    """The path to the requirements file for the run."""
+
+    post_install_steps: Path = field(init=False)
+    """The path to the post install steps file for the run."""
+
+    run_yaml_path: Path = field(init=False)
+    """The path to the run yaml file for the run."""
+
+    env_description_file: Path = field(init=False)
+    """The path to the environment description file for the run."""
+
+    env_path: Path = field(init=False)
+    """The path to the environment for the run."""
 
     def __post_init__(self) -> None:
         name_parts: list[str] = [
@@ -59,10 +127,379 @@ class Run:
         self.optimizer.support.check_opt_support(who=self.optimizer.name, problem=self.problem)
         self.benchmark = self.problem.benchmark
 
+        match self.benchmark.env, self.optimizer.env:
+            case (None, None):
+                self.env = Env.empty()
+            case (None, Env()):
+                self.env = self.optimizer.env
+            case (Env(), None):
+                self.env = self.benchmark.env
+            case (Env(), Env()):
+                self.env = Env.merge(self.benchmark.env, self.optimizer.env)
+            case _:
+                raise ValueError("Invalid combination of benchmark and optimizer environments")
+
+        self.working_dir = self.expdir.absolute().resolve() / self.name
+        self.complete_flag = self.working_dir / "complete.flag"
+        self.error_file = self.working_dir / "error.txt"
+        self.running_flag = self.working_dir / "running.flag"
+        self.df_path = self.expdir / "dfs" / f"{self.name}.parquet"
+        self.venv_requirements_file = self.working_dir / "venv_requirements.txt"
+        self.queue_flag = self.working_dir / "queue.flag"
+        self.requirements_ran_with_file = self.working_dir / "requirements_ran_with.txt"
+        self.env_description_file = self.working_dir / "env.yaml"
+        self.post_install_steps = self.working_dir / "venv_post_install.sh"
+        self.run_yaml_path = self.working_dir / "run.yaml"
+        self.env_path = self.expdir / "envs" / self.env.identifier
+
+    @property
+    def venv(self) -> Venv:
+        return Venv(self.env_path)
+
+    @property
+    def conda(self) -> Venv:
+        raise NotImplementedError("Conda not implemented yet.")
+
+    def run(
+        self,
+        *,
+        on_error: Literal["raise", "continue"] = "raise",
+        overwrite: Run.State | str | Sequence[Run.State | str] | bool = False,
+        progress_bar: bool = True,
+    ) -> Report:
+        """Run the Run.
+
+        Args:
+            on_error: How to handle errors. In any case, the error will be written
+                into the [`working_dir`][hpo_glue.run.Run.working_dir]
+                of the problem.
+
+                * If "raise", raise an error.
+                * If "continue", log the error and continue.
+
+            overwrite: What to overwrite.
+
+                * If a single value, overwrites problem in that state,
+                * If a list of states, overwrites any problem in one of those
+                 states.
+                * If `True`, overwrite problems in all states.
+                * If `False`, don't overwrite any problems.
+
+            progress_bar: Whether to show a progress bar.
+        """
+        from hpo_glue._run import _run
+
+        if on_error not in ("raise", "continue"):
+            raise ValueError(f"Invalid value for `on_error`: {on_error}")
+
+        overwrites = Run.State.collect(overwrite)
+
+        state = self.state()
+        if state in overwrites:
+            logger.info(f"Overwriting {self.name} in `{state=}` at {self.working_dir}.")
+            self.set_state(Run.State.PENDING)
+
+        if self.df_path.exists():
+            logger.info(f"Loading results for {self.name} from {self.working_dir}")
+            return Run.Report.from_df(
+                df=pd.read_parquet(self.df_path),
+                run=self,
+            )
+
+        """ TODO
+        if self.working_dir.exists():
+            raise RuntimeError(
+                "The optimizer ran before but no dataframe of results was found at "
+                f"{self.df_path}. Set `overwrite=[{state}]` to rerun problems in this state"
+            )
+        """
+
+        self.set_state(Run.State.PENDING)
+        return _run(run=self, on_error=on_error, progress_bar=progress_bar)
+
+    def create_env(
+        self,
+        *,
+        how: Literal["venv", "conda"] = "venv",
+        hpo_glue: Literal["current_version"] | str,
+    ) -> None:
+        """Set up the isolation for the experiment."""
+        if hpo_glue == "current_version":
+            raise NotImplementedError("Not implemented yet.")
+
+        match hpo_glue:
+            case "current_version":
+                _version = get_current_installed_hpo_glue_version()
+                req = f"{GLUE_PYPI}=={_version}"
+            case str():
+                req = hpo_glue
+            case _:
+                raise ValueError(f"Invalid value for `hpo_glue`: {hpo_glue}")
+
+        requirements = [req, *self.env.requirements]
+
+        logger.info(f"Installing deps: {self.env.identifier}")
+        self.working_dir.mkdir(parents=True, exist_ok=True)
+        with self.venv_requirements_file.open("w") as f:
+            f.write("\n".join(requirements))
+
+        if self.env_path.exists():
+            return
+
+        self.env_path.parent.mkdir(parents=True, exist_ok=True)
+
+        env_dict = self.env.to_dict()
+        env_dict.update({"env_path": str(self.env_path), "hpo_glue_source": req})
+
+        logger.info(f"Installing env: {self.env.identifier}")
+        match how:
+            case "venv":
+                logger.info(f"Creating environment {self.env.identifier} at {self.env_path}")
+                self.venv.create(
+                    path=self.env_path,
+                    python_version=self.env.python_version,
+                    requirements_file=self.venv_requirements_file,
+                    exists_ok=False,
+                )
+                if self.env.post_install:
+                    logger.info(f"Running post install for {self.env.identifier}")
+                    with self.post_install_steps.open("w") as f:
+                        f.write("\n".join(self.env.post_install))
+                    self.venv.run(self.env.post_install)
+            case "conda":
+                raise NotImplementedError("Conda not implemented yet.")
+            case _:
+                raise ValueError(f"Invalid value for `how`: {how}")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "problem": self.problem.to_dict(),
+            "seed": self.seed,
+            "optimizer": self.optimizer.name,
+            "optimizer_hyperparameters": self.optimizer_hyperparameters,
+            "expdir": str(self.expdir),
+        }
+
+    @classmethod
+    def from_yaml(cls, path: Path) -> Run:
+        with path.open("r") as file:
+            return Run.from_dict(yaml.safe_load(file))
+
+    def write_yaml(self) -> None:
+        self.run_yaml_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.run_yaml_path.open("w") as file:
+            yaml.dump(self.to_dict(), file, sort_keys=False)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Run:
+        from hpo_glue.optimizers import OPTIMIZERS
+
+        if data["optimizer"] not in OPTIMIZERS:
+            raise ValueError(
+                f"Optimizer {data['benchmark']} not found in optimizers!"
+                " Please make sure your optimizer is registed in `OPTIMIZERS`"
+                " before loading/parsing."
+            )
+
+        return Run(
+            problem=Problem.from_dict(data["problem"]),
+            seed=data["seed"],
+            optimizer=OPTIMIZERS[data["optimizer"]],
+            optimizer_hyperparameters=data["optimizer_hyperparameters"],
+            expdir=Path(data["expdir"]),
+        )
+
+    def state(self) -> Run.State:
+        """Return the state of the run.
+
+        Args:
+            run: The run to get the state for.
+        """
+        if self.complete_flag.exists():
+            return Run.State.COMPLETE
+
+        if self.error_file.exists():
+            return Run.State.CRASHED
+
+        if self.running_flag.exists():
+            return Run.State.RUNNING
+
+        if self.queue_flag.exists():
+            return Run.State.QUEUED
+
+        return Run.State.PENDING
+
+    def set_state(
+        self,
+        state: Run.State,
+        *,
+        df: pd.DataFrame | None = None,
+        err_tb: tuple[Exception, str] | None = None,
+    ) -> None:
+        """Set the run to a certain state.
+
+        Args:
+            state: The state to set the problem to.
+            df: Optional dataframe to save if setting to [`Run.State.COMPLETE`].
+            err_tb: Optional error traceback to save if setting to [`Run.State.CRASHED`].
+        """
+        _flags = (self.complete_flag, self.error_file, self.running_flag, self.queue_flag)
+        match state:
+            case Run.State.PENDING:
+                for _file in (*_flags, self.df_path, self.requirements_ran_with_file):
+                    _try_delete_if_exists(_file)
+
+                with self.run_yaml_path.open("w") as f:
+                    yaml.dump(self.to_dict(), f, sort_keys=False)
+
+            case Run.State.QUEUED:
+                for _file in (*_flags, self.df_path, self.requirements_ran_with_file):
+                    _try_delete_if_exists(_file)
+
+                self.queue_flag.touch()
+
+            case Run.State.RUNNING:
+                for _file in (*_flags, self.df_path, self.requirements_ran_with_file):
+                    _try_delete_if_exists(_file)
+
+                self.working_dir.mkdir(parents=True, exist_ok=True)
+                self.df_path.parent.mkdir(parents=True, exist_ok=True)
+
+                lines = subprocess.run(
+                    [self.venv.pip, "freeze"],  # noqa: S603
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                with self.requirements_ran_with_file.open("w") as f:
+                    f.write(lines.stdout)
+
+                self.running_flag.touch()
+
+            case Run.State.CRASHED:
+                for _file in (*_flags, self.df_path):
+                    _try_delete_if_exists(_file)
+
+                with self.error_file.open("w") as f:
+                    if err_tb is None:
+                        f.write("None")
+                    else:
+                        exc, tb = err_tb
+                        f.write(f"{tb}\n{exc}")
+
+            case Run.State.COMPLETE:
+                for _file in (*_flags, self.df_path):
+                    _try_delete_if_exists(_file)
+
+                self.complete_flag.touch()
+
+                if df is not None:
+                    df.to_parquet(self.df_path)
+            case _:
+                raise ValueError(f"Unknown state {state}")
+
+    @classmethod
+    def generate(  # noqa: PLR0913
+        cls,
+        optimizers: (
+            type[Optimizer]
+            | OptWithHps
+            | list[type[Optimizer]]
+            | list[OptWithHps | type[Optimizer]]
+        ),
+        benchmarks: BenchmarkDescription | Iterable[BenchmarkDescription],
+        *,
+        expdir: Path | str = DEFAULT_RELATIVE_EXP_DIR,
+        budget: BudgetType | int,
+        seeds: Iterable[int],
+        fidelities: int = 0,
+        objectives: int = 1,
+        costs: int = 0,
+        multi_objective_generation: Literal["mix_metric_cost", "metric_only"] = "mix_metric_cost",
+        on_error: Literal["warn", "raise", "ignore"] = "warn",
+    ) -> list[Run]:
+        """Generate a set of problems for the given optimizer and benchmark.
+
+        If there is some incompatibility between the optimizer, the benchmark and the requested
+        amount of objectives, fidelities or costs, a ValueError will be raised.
+
+        Args:
+            optimizers: The optimizer class to generate problems for.
+                Can provide a single optimizer or a list of optimizers.
+                If you wish to provide hyperparameters for the optimizer, provide a tuple with the
+                optimizer.
+            benchmarks: The benchmark to generate problems for.
+                Can provide a single benchmark or a list of benchmarks.
+            expdir: Which directory to store experiment results into.
+            budget: The budget to use for the problems. Budget defaults to a n_trials budget
+                where when multifidelty is enabled, fractional budget can be used and 1 is
+                equivalent a full fidelity trial.
+            seeds: The seed or seeds to use for the problems.
+            fidelities: The number of fidelities to generate problems for.
+            objectives: The number of objectives to generate problems for.
+            costs: The number of costs to generate problems for.
+            multi_objective_generation: The method to generate multiple objectives.
+            on_error: The method to handle errors.
+
+                * "warn": Log a warning and continue.
+                * "raise": Raise an error.
+                * "ignore": Ignore the error and continue.
+        """
+        _benchmarks: list[BenchmarkDescription] = []
+        match benchmarks:
+            case BenchmarkDescription():
+                _benchmarks = [benchmarks]
+            case Iterable():
+                _benchmarks = list(benchmarks)
+            case _:
+                raise TypeError(
+                    "Expected BenchmarkDescription or Iterable[BenchmarkDescription],"
+                    f" got {type(benchmarks)}"
+                )
+
+        _problems: list[Problem] = []
+        for _benchmark in _benchmarks:
+            try:
+                _problem = _benchmark.problem(
+                    objectives=objectives,
+                    budget=budget,
+                    fidelities=fidelities,
+                    costs=costs,
+                    multi_objective_generation=multi_objective_generation,
+                )
+                _problems.append(_problem)
+            except ValueError as e:
+                match on_error:
+                    case "raise":
+                        raise e
+                    case "ignore":
+                        continue
+                    case "warn":
+                        warnings.warn(f"{e}\nTo ignore this, set `on_error='ignore'`", stacklevel=2)
+                        continue
+
+        _runs_per_problem: list[Run] = []
+        for _problem in _problems:
+            try:
+                _runs = _problem.generate_runs(optimizers=optimizers, seeds=seeds, expdir=expdir)
+                _runs_per_problem.extend(_runs)
+            except ValueError as e:
+                match on_error:
+                    case "raise":
+                        raise e
+                    case "ignore":
+                        continue
+                    case "warn":
+                        warnings.warn(f"{e}\nTo ignore this, set `on_error='ignore'`", stacklevel=2)
+                        continue
+
+        return _runs_per_problem
+
     class State(str, Enum):
         """The state of a problem."""
 
         PENDING = "PENDING"
+        QUEUED = "QUEUED"
         RUNNING = "RUNNING"
         CRASHED = "CRASHED"
         COMPLETE = "COMPLETE"

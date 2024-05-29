@@ -7,14 +7,6 @@ from typing import TYPE_CHECKING
 from typing_extensions import Any, override
 
 import ConfigSpace as CS  # noqa: N817
-import optuna
-from optuna.distributions import (
-    BaseDistribution,
-    CategoricalDistribution as Cat,
-    FloatDistribution as Float,
-    IntDistribution as Int,
-)
-from optuna.samplers import NSGAIISampler, TPESampler
 
 from hpo_glue.config import Config
 from hpo_glue.optimizer import Optimizer
@@ -22,6 +14,8 @@ from hpo_glue.problem import Problem
 from hpo_glue.query import Query
 
 if TYPE_CHECKING:
+    from optuna.distributions import BaseDistribution
+
     from hpo_glue.result import Result
 
 logger = logging.getLogger(__name__)
@@ -52,6 +46,9 @@ class OptunaOptimizer(Optimizer):
         **kwargs: Any,
     ) -> None:
         """Create an Optuna Optimizer instance for a given problem statement."""
+        import optuna
+        from optuna.samplers import NSGAIISampler, TPESampler
+
         self._distributions: dict[str, BaseDistribution]
         match config_space:
             case CS.ConfigurationSpace():
@@ -143,6 +140,12 @@ class OptunaOptimizer(Optimizer):
 def _configspace_to_optuna_distributions(
     config_space: CS.ConfigurationSpace,
 ) -> dict[str, BaseDistribution]:
+    from optuna.distributions import (
+        CategoricalDistribution as Cat,
+        FloatDistribution as Float,
+        IntDistribution as Int,
+    )
+
     if len(config_space.get_conditions()) > 0:
         raise NotImplementedError("Conditions are not yet supported!")
 

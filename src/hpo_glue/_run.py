@@ -3,12 +3,11 @@ from __future__ import annotations
 import logging
 import traceback
 import warnings
-from collections.abc import Collection, Mapping
+from collections.abc import Mapping
 from contextlib import nullcontext
 from functools import partial
 from typing import TYPE_CHECKING, Literal
 
-import pandas as pd
 from tqdm import TqdmWarning, tqdm
 
 from hpo_glue.budget import CostBudget, TrialBudget
@@ -18,7 +17,6 @@ from hpo_glue.utils import rescale
 
 if TYPE_CHECKING:
     from hpo_glue.benchmark import Benchmark
-    from hpo_glue.experiment import Experiment
     from hpo_glue.optimizer import Optimizer
     from hpo_glue.problem import Problem
     from hpo_glue.result import Result
@@ -39,39 +37,15 @@ logger = logging.getLogger(__name__)
 # >         break
 def _run(
     run: Run,
-    experiment: Experiment,
     *,
-    overwrite: Collection[Run.State],
     on_error: Literal["raise", "continue"] = "raise",
-    progress_bar: bool = True,
+    progress_bar: bool = False,
 ) -> Run.Report:
-    if on_error not in ("raise", "continue"):
-        raise ValueError(f"Invalid value for `on_error`: {on_error}")
-
-    paths = experiment.run_paths(run)
-    state = experiment.state(run)
-    if state in overwrite:
-        logger.info(f"Overwriting {run.name} in `{state=}` at {paths.working_dir}.")
-        experiment.set_state(run, Run.State.PENDING)
-
-    if paths.df_path.exists():
-        logger.info(f"Loading results for {run.name} from {paths.working_dir}")
-        return Run.Report.from_df(
-            df=pd.read_parquet(paths.df_path),
-            run=run,
-        )
-
-    if paths.working_dir.exists():
-        raise RuntimeError(
-            "The optimizer ran before but no dataframe of results was found at "
-            f"{paths.df_path}. Set `overwrite=[{state}]` to rerun problems in this state"
-        )
-
-    experiment.set_state(run, Run.State.RUNNING)
+    run.set_state(run.State.RUNNING)
     benchmark = run.benchmark.load(run.benchmark)
     opt = run.optimizer(
         problem=run.problem,
-        working_directory=paths.working_dir / "optimizer_dir",
+        working_directory=run.working_dir / "optimizer_dir",
         seed=run.seed,
         config_space=benchmark.config_space,
         **run.optimizer_hyperparameters,
@@ -84,7 +58,6 @@ def _run(
         ):
             report = _run_problem_with_trial_budget(
                 run=run,
-                experiment=experiment,
                 benchmark=benchmark,
                 optimizer=opt,
                 budget_total=budget_total,
@@ -98,15 +71,14 @@ def _run(
             raise RuntimeError(f"Invalid budget type: {run.problem.budget}")
 
     logger.info(f"COMPLETED running {run.name}")
-    logger.info(f"Saving {run.name} at {paths.working_dir}")
-    experiment.set_state(run, Run.State.COMPLETE, df=report.df())
+    logger.info(f"Saving {run.name} at {run.working_dir}")
+    run.set_state(Run.State.COMPLETE, df=report.df())
     return report
 
 
 def _run_problem_with_trial_budget(
     *,
     run: Run,
-    experiment: Experiment,
     optimizer: Optimizer,
     benchmark: Benchmark,
     budget_total: int,
@@ -148,7 +120,7 @@ def _run_problem_with_trial_budget(
                     if pbar is not None:
                         pbar.update(budget_cost)
                 except Exception as e:
-                    experiment.set_state(run, Run.State.CRASHED, err_tb=(e, traceback.format_exc()))
+                    run.set_state(Run.State.CRASHED, err_tb=(e, traceback.format_exc()))
                     logger.exception(e)
                     logger.error(f"Error running {run.name}: {e}")
                     match on_error:
@@ -173,6 +145,7 @@ def _trial_budget_cost(
         case None:
             assert problem_fids is None
             return 1
+
         case (name, v):
             assert isinstance(v, int | float)
             assert isinstance(problem_fids, tuple)
@@ -184,6 +157,7 @@ def _trial_budget_cost(
             )
             assert isinstance(normed_value, float)
             return normed_value
+
         case Mapping():
             assert isinstance(problem_fids, Mapping)
             assert len(value) == len(problem_fids)

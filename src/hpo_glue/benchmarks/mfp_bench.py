@@ -28,16 +28,17 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import mfpbench
 import numpy as np
-from mfpbench import JAHSBenchmark, LCBenchBenchmark, LCBenchTabularBenchmark
 
 from hpo_glue.benchmark import BenchmarkDescription, SurrogateBenchmark, TabularBenchmark
+from hpo_glue.env import Env
 from hpo_glue.fidelity import RangeFidelity
 from hpo_glue.measure import Measure
 from hpo_glue.result import Result
 
 if TYPE_CHECKING:
+    import mfpbench
+
     from hpo_glue.query import Query
 
 
@@ -48,6 +49,8 @@ def _get_surrogate_benchmark(
     datadir: Path | str | None = None,
     **kwargs: Any,
 ) -> SurrogateBenchmark:
+    import mfpbench
+
     if datadir is not None:
         datadir = Path(datadir).absolute().resolve()
         kwargs["datadir"] = datadir
@@ -81,6 +84,8 @@ def _lcbench_tabular(
     datadir: Path | str | None = None,
     remove_constants: bool = True,
 ) -> TabularBenchmark:
+    import mfpbench
+
     if isinstance(datadir, str):
         datadir = Path(datadir).absolute().resolve()
 
@@ -100,11 +105,58 @@ def _lcbench_tabular(
     )
 
 
-descriptions = []
+_lcbench_task_ids = (
+    "3945",
+    "7593",
+    "34539",
+    "126025",
+    "126026",
+    "126029",
+    "146212",
+    "167104",
+    "167149",
+    "167152",
+    "167161",
+    "167168",
+    "167181",
+    "167184",
+    "167185",
+    "167190",
+    "167200",
+    "167201",
+    "168329",
+    "168330",
+    "168331",
+    "168335",
+    "168868",
+    "168908",
+    "168910",
+    "189354",
+    "189862",
+    "189865",
+    "189866",
+    "189873",
+    "189905",
+    "189906",
+    "189908",
+    "189909",
+)
+
+
+def _download_data_cmd(key: str, datadir: Path | None = None) -> tuple[str, ...]:
+    install_cmd = f"python -m mfpbench download --benchmark {key}"
+    if datadir is not None:
+        install_cmd += f" --data-dir {datadir.resolve()}"
+    return tuple(install_cmd.split(" "))
 
 
 def lcbench_surrogate(datadir: Path | None = None) -> Iterator[BenchmarkDescription]:
-    for task_id in LCBenchBenchmark.yahpo_instances:  # type: ignore
+    env = Env(
+        name="py310-mfpbench-1.9-yahpo",
+        requirements=("mf-prior-bench[yahpo]==1.9.0",),
+        post_install=_download_data_cmd("yahpo", datadir=datadir),
+    )
+    for task_id in _lcbench_task_ids:
         yield BenchmarkDescription(
             name=f"yahpo-lcbench-{task_id}",
             load=partial(_lcbench_tabular, task_id=task_id, datadir=datadir),
@@ -123,11 +175,55 @@ def lcbench_surrogate(datadir: Path | None = None) -> Iterator[BenchmarkDescript
             fidelities={
                 "epoch": RangeFidelity.from_tuple((1, 52, 1), supports_continuation=True),
             },
+            env=env,
         )
 
 
 def lcbench_tabular(datadir: Path | None = None) -> Iterator[BenchmarkDescription]:
-    for task_id in LCBenchTabularBenchmark.task_ids:
+    task_ids = (
+        "adult",
+        "airlines",
+        "albert",
+        "Amazon_employee_access",
+        "APSFailure",
+        "Australian",
+        "bank-marketing",
+        "blood-transfusion-service-center",
+        "car",
+        "christine",
+        "cnae-9",
+        "connect-4",
+        "covertype",
+        "credit-g",
+        "dionis",
+        "fabert",
+        "Fashion-MNIST",
+        "helena",
+        "higgs",
+        "jannis",
+        "jasmine",
+        "jungle_chess_2pcs_raw_endgame_complete",
+        "kc1",
+        "KDDCup09_appetency",
+        "kr-vs-kp",
+        "mfeat-factors",
+        "MiniBooNE",
+        "nomao",
+        "numerai28.6",
+        "phoneme",
+        "segment",
+        "shuttle",
+        "sylvine",
+        "vehicle",
+        "volkert",
+    )
+    env = Env(
+        name="py310-mfpbench-1.9-lcbench-tabular",
+        python_version="3.10",
+        requirements=("mf-prior-bench[tabular]==1.9.0",),
+        post_install=_download_data_cmd("lcbench-tabular", datadir=datadir),
+    )
+    for task_id in task_ids:
         yield BenchmarkDescription(
             name=f"lcbench_tabular-{task_id}",
             load=partial(_lcbench_tabular, task_id=task_id, datadir=datadir),
@@ -148,10 +244,17 @@ def lcbench_tabular(datadir: Path | None = None) -> Iterator[BenchmarkDescriptio
                 "test_balanced_accuracy": Measure.test_metric((0, 100), minimize=False),
                 "test_cross_entropy": Measure.test_metric(bounds=(0, np.inf), minimize=True),
             },
+            env=env,
         )
 
 
 def mfh(datadir: Path | None = None) -> Iterator[BenchmarkDescription]:
+    env = Env(
+        name="py310-mfpbench-1.9-mfh",
+        python_version="3.10",
+        requirements=("mf-prior-bench==1.9.0",),
+        post_install=(),
+    )
     for correlation in ("bad", "good", "moderate", "terrible"):
         for dims in (3, 6):
             name = f"mfh{dims}_{correlation}"
@@ -168,11 +271,21 @@ def mfh(datadir: Path | None = None) -> Iterator[BenchmarkDescription]:
                 metrics={
                     "value": Measure.metric((_min, np.inf), minimize=True),
                 },
+                has_conditionals=False,
+                is_tabular=False,
+                env=env,
             )
 
 
 def jahs(datadir: Path | None = None) -> Iterator[BenchmarkDescription]:
-    for task_id in JAHSBenchmark.task_ids:
+    task_ids = ("CIFAR10", "ColorectalHistology", "FashionMNIST")
+    env = Env(
+        name="py310-mfpbench-1.9-jahs",
+        python_version="3.10",
+        requirements=("mf-prior-bench[jahs-bench]==1.9.0",),
+        post_install=_download_data_cmd("jahs", datadir=datadir),
+    )
+    for task_id in task_ids:
         name = f"jahs-{task_id}"
         yield BenchmarkDescription(
             name=name,
@@ -196,41 +309,69 @@ def jahs(datadir: Path | None = None) -> Iterator[BenchmarkDescription]:
             },
             has_conditionals=False,
             is_tabular=False,
+            env=env,
         )
 
 
 def pd1(datadir: Path | None = None) -> Iterator[BenchmarkDescription]:
-    BS = [
-        mfpbench.PD1cifar100_wideresnet_2048,
-        mfpbench.PD1imagenet_resnet_512,
-        mfpbench.PD1lm1b_transformer_2048,
-        mfpbench.PD1translatewmt_xformer_64,
-    ]
-    for B in BS:
-        if "test_error_rate" in B.result_type.metric_defs:
-            test_metrics = {"test_error_rate": Measure.test_metric((0, 1), minimize=True)}
-        else:
-            test_metrics = None
-
-        name = f"pd1-{B.pd1_name}"
-        benchmark_name = B.pd1_name.replace("-", "_")
-        yield BenchmarkDescription(
-            name=name,
-            load=partial(_get_surrogate_benchmark, benchmark_name=benchmark_name, datadir=datadir),
-            metrics={
-                "valid_error_rate": Measure.metric((0, 1), minimize=True),
-            },
-            test_metrics=test_metrics,
-            costs={
-                "train_cost": Measure.cost((0, np.inf), minimize=True),
-            },
-            fidelities={
-                "epoch": RangeFidelity.from_tuple(
-                    B.pd1_fidelity_range,
-                    supports_continuation=True,
-                )
-            },
-        )
+    env = Env(
+        name="py310-mfpbench-1.9-pd1",
+        python_version="3.10",
+        requirements=("mf-prior-bench[pd1]==1.9.0",),
+        post_install=_download_data_cmd("pd1", datadir=datadir),
+    )
+    yield BenchmarkDescription(
+        name="pd1-cifar100-wide_resnet-2048",
+        load=partial(
+            _get_surrogate_benchmark, benchmark_name="cifar100_wideresnet_2048", datadir=datadir
+        ),
+        metrics={"valid_error_rate": Measure.metric(bounds=(0, 1), minimize=True)},
+        test_metrics=None,
+        costs={"train_cost": Measure.cost(bounds=(0, np.inf), minimize=True)},
+        fidelities={"epoch": RangeFidelity.from_tuple((1, 199, 1), supports_continuation=True)},
+        is_tabular=False,
+        has_conditionals=False,
+        env=env,
+    )
+    yield BenchmarkDescription(
+        name="pd1-imagenet-resnet-512",
+        load=partial(
+            _get_surrogate_benchmark, benchmark_name="imagenet_resnet_512", datadir=datadir
+        ),
+        metrics={"valid_error_rate": Measure.metric(bounds=(0, 1), minimize=True)},
+        test_metrics=None,
+        costs={"train_cost": Measure.cost(bounds=(0, np.inf), minimize=True)},
+        fidelities={"epoch": RangeFidelity.from_tuple((1, 99, 1), supports_continuation=True)},
+        is_tabular=False,
+        has_conditionals=False,
+        env=env,
+    )
+    yield BenchmarkDescription(
+        name="pd1-lm1b-transformer-2048",
+        load=partial(
+            _get_surrogate_benchmark, benchmark_name="lm1b_transformer_2048", datadir=datadir
+        ),
+        metrics={"valid_error_rate": Measure.metric(bounds=(0, 1), minimize=True)},
+        test_metrics=None,
+        costs={"train_cost": Measure.cost(bounds=(0, np.inf), minimize=True)},
+        fidelities={"epoch": RangeFidelity.from_tuple((1, 74, 1), supports_continuation=True)},
+        is_tabular=False,
+        has_conditionals=False,
+        env=env,
+    )
+    yield BenchmarkDescription(
+        name="pd1-translate_wmt-xformer_translate-64",
+        load=partial(
+            _get_surrogate_benchmark, benchmark_name="translatewmt_xformer_64", datadir=datadir
+        ),
+        metrics={"valid_error_rate": Measure.metric(bounds=(0, 1), minimize=True)},
+        test_metrics=None,
+        costs={"train_cost": Measure.cost(bounds=(0, np.inf), minimize=True)},
+        fidelities={"epoch": RangeFidelity.from_tuple((1, 19, 1), supports_continuation=True)},
+        is_tabular=False,
+        has_conditionals=False,
+        env=env,
+    )
 
 
 def mfpbench_benchmarks(datadir: Path | None = None) -> Iterator[BenchmarkDescription]:

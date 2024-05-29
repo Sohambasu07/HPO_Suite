@@ -1,5 +1,6 @@
 pandas<3,>=2
 matplotlib<4,>=3
+tqdm
 
 [dev]
 ruff
@@ -11,6 +12,9 @@ optuna
 
 [smac]
 smac
+
+[syne-tune]
+syne-tune[basic]
 
 [yahpo-gym]
 yahpo-gym

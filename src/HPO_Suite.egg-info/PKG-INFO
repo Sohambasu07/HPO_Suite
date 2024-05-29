@@ -223,6 +223,7 @@ Description-Content-Type: text/markdown
 License-File: LICENSE
 Requires-Dist: pandas<3,>=2
 Requires-Dist: matplotlib<4,>=3
+Requires-Dist: tqdm
 Provides-Extra: dev
 Requires-Dist: ruff; extra == "dev"
 Requires-Dist: mypy; extra == "dev"
@@ -233,6 +234,8 @@ Provides-Extra: yahpo-gym
 Requires-Dist: yahpo-gym; extra == "yahpo-gym"
 Provides-Extra: smac
 Requires-Dist: smac; extra == "smac"
+Provides-Extra: syne-tune
+Requires-Dist: syne-tune[basic]; extra == "syne-tune"
 
 # HPO-GLUE Usage
 
