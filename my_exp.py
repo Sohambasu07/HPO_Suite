@@ -24,14 +24,14 @@ def experiments(expdir: Path) -> list[Run]:
         expdir=expdir,
         optimizers=[
             DEHB_Optimizer,
-            SMAC_Hyperband,
-            (SMAC_Hyperband, {"eta": 2}),
+            # SMAC_Hyperband,
+            # (SMAC_Hyperband, {"eta": 2}),
         ],
         benchmarks=[
             BENCHMARKS["mfh3_good"],
-            BENCHMARKS["mfh6_good"],
+            # BENCHMARKS["mfh6_good"],
         ],
-        seeds=range(2),
+        seeds=[1],
         budget=50,
         objectives=1,
         fidelities=1,
@@ -41,6 +41,9 @@ def experiments(expdir: Path) -> list[Run]:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument("--continuations", action="store_true")
+    parser.add_argument("--precision", type=int)
+    parser.add_argument("--overwrite", action="store_true")
     subparsers = parser.add_subparsers(dest="command")
 
     setup_parser = subparsers.add_parser("setup")
@@ -73,7 +76,12 @@ if __name__ == "__main__":
                     )
             else:
                 for run in experiments(expdir):
-                    run.run(progress_bar=True)
+                    run.run(
+                        overwrite=args.overwrite, 
+                        progress_bar=True,
+                        continuations=args.continuations,
+                        precision=args.precision
+                    )
 
         case "from-yaml":
             exp = Run.from_yaml(args.path)

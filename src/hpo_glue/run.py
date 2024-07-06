@@ -166,6 +166,8 @@ class Run:
         on_error: Literal["raise", "continue"] = "raise",
         overwrite: Run.State | str | Sequence[Run.State | str] | bool = False,
         progress_bar: bool = True,
+        continuations: bool = False,
+        precision: int | None = None,
     ) -> Report:
         """Run the Run.
 
@@ -215,7 +217,13 @@ class Run:
         """
 
         self.set_state(Run.State.PENDING)
-        return _run(run=self, on_error=on_error, progress_bar=progress_bar)
+        return _run(
+            run=self, 
+            on_error=on_error, 
+            progress_bar=progress_bar,
+            continuations=continuations,
+            precision=precision
+        )
 
     def create_env(
         self,
