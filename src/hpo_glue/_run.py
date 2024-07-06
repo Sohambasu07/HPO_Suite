@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import numpy as np
+import math
+from collections import OrderedDict
+from dataclasses import dataclass, field
 import logging
 import traceback
 import warnings
@@ -7,6 +11,7 @@ from collections.abc import Mapping
 from contextlib import nullcontext
 from functools import partial
 from typing import TYPE_CHECKING, Literal
+from pathlib import Path
 
 from tqdm import TqdmWarning, tqdm
 
@@ -35,17 +40,53 @@ logger = logging.getLogger(__name__)
 # >   decision = opt.tell(result)
 # >   if decision == "stop":
 # >         break
+@dataclass
+class Conf:
+    t: tuple
+    fid: int | float
+
+@dataclass
+class Runtime_hist():
+    configs: OrderedDict[tuple, list[int | float]] = field(default_factory=OrderedDict)
+
+    def add_conf(
+        self, 
+        config: Conf
+    ) -> None:
+        if config.t not in self.configs:
+            self.configs[config.t] = [config.fid]
+        else:
+            self.configs[config.t].append(config.fid)
+
+
+    def search(self, config: Conf) -> bool:
+        if len(self.configs) == 0:
+            return False
+        # else:
+        #     idxs = np.searchsorted(self.configs, config)
+        #     if np.any(idxs >= len(self.configs)):
+        #         return False
+        #     if np.all(self.configs[idxs] == config):
+        #         return True
+        elif config.t in self.configs:
+            return True
+        return False
+
+
 def _run(
     run: Run,
     *,
     on_error: Literal["raise", "continue"] = "raise",
     progress_bar: bool = False,
+    continuations: bool = False,
+    precision: int | None = None,
 ) -> Run.Report:
     run.set_state(run.State.RUNNING)
     benchmark = run.benchmark.load(run.benchmark)
     opt = run.optimizer(
         problem=run.problem,
-        working_directory=run.working_dir / "optimizer_dir",
+        # working_directory=run.working_dir / "optimizer_dir",
+        working_directory=Path('./Optimizers_cache'),
         seed=run.seed,
         config_space=benchmark.config_space,
         **run.optimizer_hyperparameters,
@@ -64,6 +105,8 @@ def _run(
                 on_error=on_error,
                 minimum_normalized_fidelity=minimum_normalized_fidelity,
                 progress_bar=progress_bar,
+                continuations=continuations,
+                precision=precision,
             )
         case CostBudget():
             raise NotImplementedError("CostBudget not yet implemented")
@@ -85,6 +128,8 @@ def _run_problem_with_trial_budget(
     on_error: Literal["raise", "continue"],
     minimum_normalized_fidelity: float,
     progress_bar: bool,
+    continuations: bool = False,
+    precision: int | None = None,
 ) -> Run.Report:
     used_budget: float = 0.0
 
@@ -98,11 +143,17 @@ def _run_problem_with_trial_budget(
     # NOTE(eddiebergman): Ignore the tqdm warning about the progress bar going past max
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=TqdmWarning)
+        runhist = Runtime_hist()
 
         with ctx() as pbar:
             while used_budget < budget_total:
                 try:
                     query = optimizer.ask()
+                    query.config.set_precision(precision) #TODO: Don't change actual config values
+                    config = Conf(query.config.to_tuple(), used_budget)
+                    if continuations and runhist.search(config):
+                        logger.warning(f"Configuration: {query.config} already evaluated!")
+                    runhist.add_conf(config)
                     result = benchmark.query(query)
 
                     budget_cost = _trial_budget_cost(
@@ -130,7 +181,7 @@ def _run_problem_with_trial_budget(
                             raise NotImplementedError("Continue not yet implemented!") from e
                         case _:
                             raise RuntimeError(f"Invalid value for `on_error`: {on_error}") from e
-
+            # print(runhist.configs)
     return Run.Report(run=run, results=history)
 
 
