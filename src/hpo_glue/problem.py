@@ -94,6 +94,8 @@ class Problem:
     This is used to identify the problem statement.
     """
 
+    precision: int = field(default=12) #TODO: Set default
+
     def __post_init__(self) -> None:
         self.is_tabular = self.benchmark.is_tabular
         self.is_manyfidelity: bool

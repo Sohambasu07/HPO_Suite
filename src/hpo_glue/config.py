@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
-import math
+import numpy as np
 
 
 @dataclass
@@ -18,12 +18,15 @@ class Config:
     In the case this config was deserialized, it will likely be `None`.
     """
 
-    def to_tuple(self) -> tuple:
-        return tuple(self.values.values()) #TODO: Set precision here itself, default to 12
+    def to_tuple(self, precision) -> tuple:
+        return tuple(
+            self.set_precision(
+                self.values, 
+                precision
+            ).values()
+        )
 
-    def set_precision(self, precision: int | None = None) -> None:
-        if precision is None:
-            return
-        for key, value in self.values.items():
+    def set_precision(self, values: dict, precision: int = 12) -> None:
+        for key, value in values.items():
             if isinstance(value, float):
-                self.values[key] = math.floor(value * 10 ** precision) / 10 ** precision #TODO: Use np.round
+                self.values[key] = np.round(value, precision)
