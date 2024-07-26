@@ -224,6 +224,9 @@ License-File: LICENSE
 Requires-Dist: pandas<3,>=2
 Requires-Dist: matplotlib<4,>=3
 Requires-Dist: tqdm
+Requires-Dist: more_itertools
+Requires-Dist: pyyaml
+Requires-Dist: ConfigSpace
 Provides-Extra: dev
 Requires-Dist: ruff; extra == "dev"
 Requires-Dist: mypy; extra == "dev"
