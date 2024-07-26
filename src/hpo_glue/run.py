@@ -41,6 +41,8 @@ T = TypeVar("T", bound=Hashable)
 
 logger = logging.getLogger(__name__)
 
+GLOBAL_SEED = 42
+
 
 def _try_delete_if_exists(path: Path) -> None:
     if path.exists():
@@ -409,6 +411,16 @@ class Run:
                 raise ValueError(f"Unknown state {state}")
 
     @classmethod
+    def generate_seeds(
+        cls,
+        num_seeds: int,
+    ):
+        """Generate a set of seeds using a Global Seed."""
+        cls._rng = np.random.default_rng(GLOBAL_SEED)
+        seeds = cls._rng.integers(0, 2 ** 32 - 1, size=num_seeds)
+        return seeds
+
+    @classmethod
     def generate(  # noqa: PLR0913
         cls,
         optimizers: (
@@ -421,7 +433,8 @@ class Run:
         *,
         expdir: Path | str = DEFAULT_RELATIVE_EXP_DIR,
         budget: BudgetType | int,
-        seeds: Iterable[int],
+        # seeds: Iterable[int],
+        num_seeds: int,
         fidelities: int = 0,
         objectives: int = 1,
         costs: int = 0,
@@ -455,6 +468,11 @@ class Run:
                 * "raise": Raise an error.
                 * "ignore": Ignore the error and continue.
         """
+        
+        # Generate seeds
+        seeds = cls.generate_seeds(num_seeds).tolist()
+        print(seeds)
+
         _benchmarks: list[BenchmarkDescription] = []
         match benchmarks:
             case BenchmarkDescription():

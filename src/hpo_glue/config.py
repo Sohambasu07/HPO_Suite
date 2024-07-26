@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 import numpy as np
 
+PRECISION = 12
 
 @dataclass
 class Config:
@@ -18,7 +19,9 @@ class Config:
     In the case this config was deserialized, it will likely be `None`.
     """
 
-    def to_tuple(self, precision) -> tuple:
+    def to_tuple(self, precision: int | None = None) -> tuple:
+        if precision is None:
+            precision = PRECISION
         return tuple(
             self.set_precision(
                 self.values, 
@@ -26,7 +29,8 @@ class Config:
             ).values()
         )
 
-    def set_precision(self, values: dict, precision: int = 12) -> None:
+    def set_precision(self, values: dict, precision: int) -> None:
         for key, value in values.items():
             if isinstance(value, float):
-                self.values[key] = np.round(value, precision)
+                values[key] = np.round(value, precision)
+        return values

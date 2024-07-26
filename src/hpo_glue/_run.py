@@ -116,7 +116,6 @@ def _run(
                 minimum_normalized_fidelity=minimum_normalized_fidelity,
                 progress_bar=progress_bar,
                 continuations=continuations,
-                precision=run.precision,
             )
         case CostBudget():
             raise NotImplementedError("CostBudget not yet implemented")

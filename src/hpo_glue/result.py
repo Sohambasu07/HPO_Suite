@@ -28,7 +28,9 @@ class Result:
     values: dict[str, Any]
     """Everything returned by the benchmark for a given query at the fideltiy."""
 
-    values_prec: dict[tuple, dict[str, list[int | float]]]
+    # values_prec: dict[tuple, dict[str, list[int | float]]]
+    """The values of the configuration as a tuple along with all the fidelities 
+    queried for that particular config."""
 
     budget_cost: float = np.nan
     """The amount of budget used to generate this result."""
