@@ -191,6 +191,8 @@ class Run:
         """
         from hpo_glue._run import _run
 
+        self.problem.precision = precision
+
         if on_error not in ("raise", "continue"):
             raise ValueError(f"Invalid value for `on_error`: {on_error}")
 
@@ -222,7 +224,7 @@ class Run:
             on_error=on_error, 
             progress_bar=progress_bar,
             continuations=continuations,
-            precision=precision
+            # precision=precision
         )
 
     def create_env(
