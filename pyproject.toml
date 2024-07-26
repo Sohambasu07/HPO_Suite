@@ -2,7 +2,14 @@
 name = "HPO_Suite"
 version = "0.1.0"
 requires-python = ">=3.10"
-dependencies = ["pandas>=2,<3", "matplotlib>=3,<4", "tqdm"]
+dependencies = [
+  "pandas>=2,<3", 
+  "matplotlib>=3,<4", 
+  "tqdm", 
+  "more_itertools",
+  "pyyaml",
+  "ConfigSpace"
+  ]
 authors = [
   { name = "Soham Basu", email = "Soham.Basu07@gmail.com" },
   { name = "Eddie Bergman", email = "eddiebergmanhs@gmail.com" },
