@@ -19,7 +19,7 @@ smac_logger.setLevel(logging.ERROR)
 THIS_FILE = Path(__file__).absolute().resolve()
 
 
-def experiments(expdir: Path) -> list[Run]:
+def experiments(expdir: Path, num_seeds: int) -> list[Run]:
     return Run.generate(
         expdir=expdir,
         optimizers=[
@@ -31,7 +31,8 @@ def experiments(expdir: Path) -> list[Run]:
             BENCHMARKS["mfh3_good"],
             # BENCHMARKS["mfh6_good"],
         ],
-        seeds=[1],
+        # seeds=[1],
+        num_seeds=num_seeds,
         budget=50,
         objectives=1,
         fidelities=1,
@@ -44,6 +45,7 @@ if __name__ == "__main__":
     parser.add_argument("--continuations", action="store_true")
     parser.add_argument("--precision", type=int)
     parser.add_argument("--overwrite", action="store_true")
+    parser.add_argument("--num_seeds", type=int, default=1)
     subparsers = parser.add_subparsers(dest="command")
 
     setup_parser = subparsers.add_parser("setup")
@@ -61,21 +63,21 @@ if __name__ == "__main__":
     match args.command:
         case "setup":
             expdir = Path(args.expdir)
-            for run in experiments(expdir):
+            for run in experiments(expdir, num_seeds=args.num_seeds):
                 run.create_env(hpo_glue=f"-e {Path.cwd()}")
                 run.write_yaml()
         case "run":
             expdir = Path(args.expdir)
 
             if args.isolated:
-                for run in experiments(expdir):
+                for run in experiments(expdir, num_seeds=args.num_seeds):
                     script = str(THIS_FILE)
                     subprocess.run(
                         [run.venv.python, script, "from-yaml", "--path", str(run.run_yaml_path)],  # noqa: S603
                         check=True,
                     )
             else:
-                for run in experiments(expdir):
+                for run in experiments(expdir, num_seeds=args.num_seeds):
                     run.run(
                         overwrite=args.overwrite, 
                         progress_bar=True,

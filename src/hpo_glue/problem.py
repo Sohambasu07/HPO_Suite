@@ -188,7 +188,9 @@ class Problem:
         """
         from hpo_glue.run import Run
 
-        _seeds = list(seeds)
+        _seeds = seeds
+        # if not isinstance(seeds, Iterable):
+        #     _seeds = [seeds]
         _optimizers: list[OptWithHps]
         match optimizers:
             case tuple():
