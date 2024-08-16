@@ -9,6 +9,7 @@ from pathlib import Path
 from hpo_glue.benchmarks import BENCHMARKS
 from hpo_glue.optimizers.dehb import DEHB_Optimizer
 from hpo_glue.optimizers.smac import SMAC_Hyperband
+from hpo_glue.optimizers.nevergrad import NevergradOptimizer
 from hpo_glue.run import Run
 
 logging.basicConfig(level=logging.DEBUG)
@@ -26,6 +27,7 @@ def experiments(expdir: Path, num_seeds: int) -> list[Run]:
             DEHB_Optimizer,
             # SMAC_Hyperband,
             # (SMAC_Hyperband, {"eta": 2}),
+            # NevergradOptimizer,
         ],
         benchmarks=[
             BENCHMARKS["mfh3_good"],
