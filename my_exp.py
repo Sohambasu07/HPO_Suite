@@ -10,6 +10,8 @@ from hpo_glue.benchmarks import BENCHMARKS
 from hpo_glue.optimizers.dehb import DEHB_Optimizer
 from hpo_glue.optimizers.smac import SMAC_Hyperband
 from hpo_glue.optimizers.nevergrad import NevergradOptimizer
+from hpo_glue.optimizers.scikit_optimize import SkoptOptimizer
+from hpo_glue.optimizers.synetune import SyneTuneBO
 from hpo_glue.run import Run
 
 logging.basicConfig(level=logging.DEBUG)
@@ -24,10 +26,12 @@ def experiments(expdir: Path, num_seeds: int) -> list[Run]:
     return Run.generate(
         expdir=expdir,
         optimizers=[
-            DEHB_Optimizer,
+            # DEHB_Optimizer,
             # SMAC_Hyperband,
             # (SMAC_Hyperband, {"eta": 2}),
+            SyneTuneBO,
             # NevergradOptimizer,
+            # SkoptOptimizer,
         ],
         benchmarks=[
             BENCHMARKS["mfh3_good"],
@@ -82,7 +86,7 @@ if __name__ == "__main__":
                 for run in experiments(expdir, num_seeds=args.num_seeds):
                     run.run(
                         overwrite=args.overwrite, 
-                        progress_bar=True,
+                        progress_bar=False,     # Slows down the whole process
                         continuations=args.continuations,
                         precision=args.precision
                     )
