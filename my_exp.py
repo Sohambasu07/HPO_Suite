@@ -11,7 +11,7 @@ from hpo_glue.optimizers.dehb import DEHB_Optimizer
 from hpo_glue.optimizers.smac import SMAC_Hyperband
 from hpo_glue.optimizers.nevergrad import NevergradOptimizer
 from hpo_glue.optimizers.scikit_optimize import SkoptOptimizer
-from hpo_glue.optimizers.synetune import SyneTuneBO
+from hpo_glue.optimizers.synetune import SyneTuneBO, SyneTuneBOHB
 from hpo_glue.run import Run
 
 logging.basicConfig(level=logging.DEBUG)
@@ -29,7 +29,8 @@ def experiments(expdir: Path, num_seeds: int) -> list[Run]:
             # DEHB_Optimizer,
             # SMAC_Hyperband,
             # (SMAC_Hyperband, {"eta": 2}),
-            SyneTuneBO,
+            # SyneTuneBO,
+            SyneTuneBOHB,
             # NevergradOptimizer,
             # SkoptOptimizer,
         ],

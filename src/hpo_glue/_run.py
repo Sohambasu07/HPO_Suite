@@ -64,22 +64,22 @@ class Runtime_hist():
                 self.configs[config.t][fid_type].append(config.fid)
 
 
-    def search(
-        self, 
-        config: Conf,
-        # fid_type: str
-    ) -> bool:
-        if len(self.configs) == 0:
-            return False
-        # else:
-        #     idxs = np.searchsorted(self.configs, config)
-        #     if np.any(idxs >= len(self.configs)):
-        #         return False
-        #     if np.all(self.configs[idxs] == config):
-        #         return True
-        elif config.t in self.configs:
-            return True
-        return False
+    # def search(
+    #     self, 
+    #     config: Conf,
+    #     # fid_type: str
+    # ) -> bool:
+    #     if len(self.configs) == 0:
+    #         return False
+    #     # else:
+    #     #     idxs = np.searchsorted(self.configs, config)
+    #     #     if np.any(idxs >= len(self.configs)):
+    #     #         return False
+    #     #     if np.all(self.configs[idxs] == config):
+    #     #         return True
+    #     elif config.t in self.configs:
+    #         return True
+    #     return False
 
     def get_conf_dict(self) -> dict:
         return self.configs
@@ -153,6 +153,8 @@ def _run_problem_with_trial_budget(
         warnings.simplefilter("ignore", category=TqdmWarning)
         runhist = Runtime_hist()
 
+        tuple_configs: dict[tuple, dict[str, list[int | float]]]
+
         with ctx() as pbar:
             while used_budget < budget_total:
                 try:
@@ -180,6 +182,7 @@ def _run_problem_with_trial_budget(
                     history.append(result)
                     if pbar is not None:
                         pbar.update(budget_cost)
+                    tuple_configs = runhist.get_conf_dict()
                 except Exception as e:
                     run.set_state(Run.State.CRASHED, err_tb=(e, traceback.format_exc()))
                     logger.exception(e)
@@ -192,7 +195,7 @@ def _run_problem_with_trial_budget(
                         case _:
                             raise RuntimeError(f"Invalid value for `on_error`: {on_error}") from e
             # print(runhist.configs)
-    return Run.Report(run=run, results=history)
+    return Run.Report(run=run, results=history, tuple_configs_dict=tuple_configs)
 
 
 def _trial_budget_cost(

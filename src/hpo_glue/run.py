@@ -556,6 +556,7 @@ class Run:
 
         run: Run
         results: list[Result]
+        tuple_configs_dict: dict[tuple, dict[str, list[int | float]]] = field(default_factory=dict)
 
         problem: Problem = field(init=False)
 
