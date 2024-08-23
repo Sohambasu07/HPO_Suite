@@ -59,10 +59,14 @@ class SyneTuneOptimizer(Optimizer):
             creation_time=datetime.datetime.now(),
         )
 
+        fidelity = None
+        if isinstance(self.problem.fidelity, tuple):
+            fidelity = trial_suggestion.config.pop(self.problem.fidelity[0])
+
         # TODO: How to get the fidelity??
         return Query(
             config=Config(config_id=name, values=trial.config),
-            fidelity=None,
+            fidelity=fidelity,
             optimizer_info=trial,
         )
 
@@ -122,7 +126,8 @@ class SyneTuneBO(SyneTuneOptimizer):
                 pass
             case tuple():
                 clsname = self.__class__.__name__
-                raise ValueError(f"{clsname} does not multi-fidelity spaces")
+                # raise ValueError(f"{clsname} does not multi-fidelity spaces")
+                pass
             case Mapping():
                 clsname = self.__class__.__name__
                 raise NotImplementedError(f"{clsname} does not support many-fidelity")
@@ -159,6 +164,9 @@ class SyneTuneBO(SyneTuneOptimizer):
                 raise ValueError("SyneTuneBO does not support tabular benchmarks")
             case _:
                 raise TypeError("config_space must be of type ConfigSpace.ConfigurationSpace")
+            
+        if isinstance(problem.fidelity, tuple):
+            synetune_cs[problem.fidelity[0]] = problem.fidelity[1]  # TODO: Check this
 
         super().__init__(
             problem=problem,
