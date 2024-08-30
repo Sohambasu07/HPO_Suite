@@ -42,6 +42,9 @@ class Optimizer(ABC):
     If left as `None`, the currently activated environemnt will be used.
     """
 
+    mem_req_MB: ClassVar[int]
+    """The memory requirement of the optimizer in MB."""
+
     @abstractmethod
     def __init__(
         self,

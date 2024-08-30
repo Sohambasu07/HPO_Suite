@@ -115,6 +115,11 @@ class Run:
     env_path: Path = field(init=False)
     """The path to the environment for the run."""
 
+    mem_req_MB: int = field(init=False)
+    """The memory requirement for the run in MB.
+    Calculated as the sum of the memory requirements of the optimizer and the benchmark.
+    """
+
     def __post_init__(self) -> None:
         name_parts: list[str] = [
             self.problem.name,
@@ -153,6 +158,7 @@ class Run:
         self.post_install_steps = self.working_dir / "venv_post_install.sh"
         self.run_yaml_path = self.working_dir / "run.yaml"
         self.env_path = self.expdir / "envs" / self.env.identifier
+        self.mem_req_MB = self.problem.mem_req_MB + self.optimizer.mem_req_MB
 
     @property
     def venv(self) -> Venv:
@@ -410,6 +416,7 @@ class Run:
             case _:
                 raise ValueError(f"Unknown state {state}")
 
+
     @classmethod
     def generate_seeds(
         cls,
@@ -417,11 +424,11 @@ class Run:
     ):
         """Generate a set of seeds using a Global Seed."""
         cls._rng = np.random.default_rng(GLOBAL_SEED)
-        seeds = cls._rng.integers(0, 2 ** 32 - 1, size=num_seeds)
-        return seeds
+        return cls._rng.integers(0, 2 ** 30 - 1, size=num_seeds)
+
 
     @classmethod
-    def generate(  # noqa: PLR0913
+    def generate(  # noqa: C901, D417, PLR0912
         cls,
         optimizers: (
             type[Optimizer]
@@ -468,10 +475,8 @@ class Run:
                 * "raise": Raise an error.
                 * "ignore": Ignore the error and continue.
         """
-        
         # Generate seeds
         seeds = cls.generate_seeds(num_seeds).tolist()
-        print(seeds)
 
         _benchmarks: list[BenchmarkDescription] = []
         match benchmarks:

@@ -26,11 +26,11 @@ def experiments(expdir: Path, num_seeds: int) -> list[Run]:
     return Run.generate(
         expdir=expdir,
         optimizers=[
-            # DEHB_Optimizer,
+            DEHB_Optimizer,
             # SMAC_Hyperband,
             # (SMAC_Hyperband, {"eta": 2}),
             # SyneTuneBO,
-            SyneTuneBOHB,
+            # SyneTuneBOHB,
             # NevergradOptimizer,
             # SkoptOptimizer,
         ],
@@ -79,7 +79,7 @@ if __name__ == "__main__":
             if args.isolated:
                 for run in experiments(expdir, num_seeds=args.num_seeds):
                     script = str(THIS_FILE)
-                    subprocess.run(
+                    subprocess.run(  # TODO: Don't use subprocess.run
                         [run.venv.python, script, "from-yaml", "--path", str(run.run_yaml_path)],  # noqa: S603
                         check=True,
                     )

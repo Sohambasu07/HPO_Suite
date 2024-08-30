@@ -96,7 +96,10 @@ class Problem:
 
     precision: int = field(default=12) #TODO: Set default
 
+    mem_req_MB: int = field(init=False)
+
     def __post_init__(self) -> None:
+        self.mem_req_MB = self.benchmark.mem_req_MB
         self.is_tabular = self.benchmark.is_tabular
         self.is_manyfidelity: bool
         self.is_multifidelity: bool

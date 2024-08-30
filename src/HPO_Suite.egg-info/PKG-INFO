@@ -2,7 +2,7 @@ Metadata-Version: 2.1
 Name: HPO_Suite
 Version: 0.1.0
 Summary: A lightweight framework for benchmarking HPO algorithms
-Author-email: Soham Basu <Soham.Basu07@gmail.com>, Eddie Bergman <eddiebergmanhs@gmail.com>, Neeratyoy Malik <neeratyoy@gmail.com>
+Author-email: Soham Basu <soham.basu07@gmail.com>, Eddie Bergman <eddiebergmanhs@gmail.com>, Neeratyoy Malik <neeratyoy@gmail.com>
 License:                                  Apache License
                                    Version 2.0, January 2004
                                 http://www.apache.org/licenses/
@@ -239,6 +239,7 @@ Provides-Extra: smac
 Requires-Dist: smac; extra == "smac"
 Provides-Extra: syne-tune
 Requires-Dist: syne-tune[basic]; extra == "syne-tune"
+Requires-Dist: syne-tune[gpsearchers]; extra == "syne-tune"
 
 # HPO-GLUE Usage
 

@@ -83,6 +83,9 @@ class BenchmarkDescription:
     env: Env = field(default_factory=Env.empty)
     """The environment needed to run this benchmark."""
 
+    mem_req_MB: int
+    """The memory requirement of the benchmark in MB."""
+
     def problem(  # noqa: C901, PLR0912
         self,
         budget: BudgetType | int,

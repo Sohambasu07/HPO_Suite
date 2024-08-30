@@ -22,6 +22,7 @@ src/hpo_glue/query.py
 src/hpo_glue/register.py
 src/hpo_glue/result.py
 src/hpo_glue/run.py
+src/hpo_glue/study.py
 src/hpo_glue/utils.py
 src/hpo_glue/benchmarks/__init__.py
 src/hpo_glue/benchmarks/mfp_bench.py
@@ -30,6 +31,7 @@ src/hpo_glue/optimizers/dehb.py
 src/hpo_glue/optimizers/nevergrad.py
 src/hpo_glue/optimizers/optuna.py
 src/hpo_glue/optimizers/random_search.py
+src/hpo_glue/optimizers/scikit_optimize.py
 src/hpo_glue/optimizers/smac.py
 src/hpo_glue/optimizers/synetune.py
 src/hpo_glue/plotting/__init__.py
