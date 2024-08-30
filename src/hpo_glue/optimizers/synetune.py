@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 class SyneTuneOptimizer(Optimizer):
     """Base class for SyneTune Optimizers."""
 
-    name = "SyneTune-base"
+    name = "SyneTune_base"
 
     env = Env(
         name="syne_tune-0.13.0",
@@ -100,7 +100,7 @@ class SyneTuneOptimizer(Optimizer):
 class SyneTuneBO(SyneTuneOptimizer):
     """SyneTune Bayesian Optimization."""
 
-    name = "SyneTune-BO"
+    name = "SyneTune_BO"
     support = Problem.Support(
         fidelities=(None,),
         objectives=("single",),
@@ -192,7 +192,7 @@ class SyneTuneBO(SyneTuneOptimizer):
 class SyneTuneBOHB(SyneTuneOptimizer):
     """SyneTune BOHB."""
 
-    name = "SyneTune-BOHB"
+    name = "SyneTune_BOHB"
     support = Problem.Support(
         fidelities=(None,),
         objectives=("single",),

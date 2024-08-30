@@ -22,7 +22,7 @@ class DEHB_Optimizer(Optimizer):
     TODO: Document me
     """
 
-    name = "DEHB-0.1.1"
+    name = "DEHB_Optimizer"
     env = Env(
         name="dehb-0.1.1",
         python_version="3.10",
@@ -35,6 +35,8 @@ class DEHB_Optimizer(Optimizer):
         cost_awareness=(None, "single"),
         tabular=False,
     )
+
+    mem_req = 1024
 
     def __init__(
         self,
