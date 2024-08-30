@@ -4,6 +4,7 @@ from hpo_glue.problem import Problem
 from hpo_glue.query import Query
 from hpo_glue.result import Result
 from hpo_glue.run import Run
+from hpo_glue.study import create_study
 
 __all__ = [
     "Run",
@@ -15,4 +16,5 @@ __all__ = [
     "Config",
     "Result",
     "Query",
+    "create_study",
 ]
