@@ -85,7 +85,7 @@ _pymoo_so = [
 ]
 
 
-def pymoo_benchmark() -> Iterator[BenchmarkDescription]:
+def pymoo_problems() -> Iterator[BenchmarkDescription]:
     env = Env(
         name="py310-pymoo-0.6.1.3",
         requirements=["pymoo==0.6.1.3"],
@@ -97,7 +97,12 @@ def pymoo_benchmark() -> Iterator[BenchmarkDescription]:
             env=env,
             load = partial(_get_pymoo_problems, function_name=prob_name),
             has_conditionals=False,
-            fidelity_space=None,
+            metrics={
+                    "value": Measure.metric((-np.inf, np.inf), minimize=True),
+                },
             is_tabular=False,
             mem_req_MB=1024,
         )
+
+def pymoo_benchmarks(datadir: Path | None = None) -> Iterator[BenchmarkDescription]:
+    yield from pymoo_problems()

@@ -71,7 +71,7 @@ if __name__ == "__main__":
         "--num_seeds", "-n",
         type=int,
         default=1,
-        help="Number of seeds to be generated"
+        help="Number of seeds to be generated. "
         "Only used if seeds is not provided",
     )
     parser.add_argument(
@@ -98,7 +98,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--exec_type", "-x",
         type=str,
-        default="sequential",
+        default="dump",
         choices=["sequential", "parallel", "dump"],
         help="Execution type",
     )
