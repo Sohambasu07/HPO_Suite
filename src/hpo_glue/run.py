@@ -115,6 +115,9 @@ class Run:
     env_path: Path = field(init=False)
     """The path to the environment for the run."""
 
+    continuations: bool = field(default=False)
+    """Whether to use continuations for the run."""
+
     mem_req_MB: int = field(init=False)
     """The memory requirement for the run in MB.
     Calculated as the sum of the memory requirements of the optimizer and the benchmark.
@@ -225,7 +228,7 @@ class Run:
                 f"{self.df_path}. Set `overwrite=[{state}]` to rerun problems in this state"
             )
         """
-
+        self.continuations = continuations
         self.set_state(Run.State.PENDING)
         return _run(
             run=self, 
@@ -629,6 +632,8 @@ class Run:
                     case Mapping():
                         for i, name in enumerate(problem.cost, start=1):
                             _rparts[f"result.fidelity.{i}.value"] = _r.values[name]
+
+                _rparts["result.continuations_cost.1"] = _r.continuations_cost
 
                 return _rparts
 

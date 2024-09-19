@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-import numpy as np
-import math
-from dataclasses import dataclass, field
 import logging
 import traceback
 import warnings
 from collections.abc import Mapping
 from contextlib import nullcontext
+from dataclasses import dataclass, field
 from functools import partial
-from typing import TYPE_CHECKING, Literal
 from pathlib import Path
+from typing import TYPE_CHECKING, Literal
 
 from tqdm import TqdmWarning, tqdm
 
@@ -57,29 +55,22 @@ class Runtime_hist():
             self.configs[config.t] = {
                 fid_type: [config.fid]
             }
+        elif fid_type not in self.configs[config.t]:
+            self.configs[config.t][fid_type] = [config.fid]
+        elif config.fid not in self.configs[config.t][fid_type]:
+            self.configs[config.t][fid_type].append(config.fid)
         else:
-            if fid_type not in self.configs[config.t]:
-                self.configs[config.t][fid_type] = [config.fid]
-            else:
-                self.configs[config.t][fid_type].append(config.fid)
+            raise ValueError(f"Fidelity {config.fid} sampled twice by Optimizer!")
 
-
-    # def search(
-    #     self, 
-    #     config: Conf,
-    #     # fid_type: str
-    # ) -> bool:
-    #     if len(self.configs) == 0:
-    #         return False
-    #     # else:
-    #     #     idxs = np.searchsorted(self.configs, config)
-    #     #     if np.any(idxs >= len(self.configs)):
-    #     #         return False
-    #     #     if np.all(self.configs[idxs] == config):
-    #     #         return True
-    #     elif config.t in self.configs:
-    #         return True
-    #     return False
+    def get_continuations_cost(
+            self,
+            config: Conf,
+            fid_type: str
+    ) -> float:
+        fid_list = self.configs[config.t][fid_type]
+        if len(fid_list) == 1:
+            return fid_list[0]
+        return fid_list[-1] - fid_list[-2]
 
     def get_conf_dict(self) -> dict:
         return self.configs
@@ -96,7 +87,7 @@ def _run(
     benchmark = run.benchmark.load(run.benchmark)
     opt = run.optimizer(
         problem=run.problem,
-        working_directory=Path('./Optimizers_cache'),
+        working_directory=Path("./Optimizers_cache"),
         seed=run.seed,
         config_space=benchmark.config_space,
         **run.optimizer_hyperparameters,
@@ -124,6 +115,7 @@ def _run(
 
     logger.info(f"COMPLETED running {run.name}")
     logger.info(f"Saving {run.name} at {run.working_dir}")
+    logger.info(f"Results dumped at {run.df_path.absolute()}")
     run.set_state(Run.State.COMPLETE, df=report.df())
     return report
 
@@ -159,15 +151,17 @@ def _run_problem_with_trial_budget(
             while used_budget < budget_total:
                 try:
                     query = optimizer.ask()
-                    config = Conf(query.config.to_tuple(run.problem.precision), used_budget)
-                    # if continuations and runhist.search(config):
-                    #     logger.warning(f"Configuration: {query.config} already evaluated!")
+                    config = Conf(query.config.to_tuple(run.problem.precision), query.fidelity[1])
                     runhist.add_conf(
                         config=config,
                         fid_type=run.problem.fidelity[0] #TODO: Manyfidelity not implemented -> turn into error
                     )
                     result = benchmark.query(query)
-
+                    if continuations:
+                        result.continuations_cost = runhist.get_continuations_cost(
+                            config=config,
+                            fid_type=run.problem.fidelity[0]
+                    )
                     budget_cost = _trial_budget_cost(
                         value=result.fidelity,
                         problem=run.problem,
@@ -194,7 +188,6 @@ def _run_problem_with_trial_budget(
                             raise NotImplementedError("Continue not yet implemented!") from e
                         case _:
                             raise RuntimeError(f"Invalid value for `on_error`: {on_error}") from e
-            # print(runhist.configs)
     return Run.Report(run=run, results=history, tuple_configs_dict=tuple_configs)
 
 
