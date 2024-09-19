@@ -230,6 +230,64 @@ class Study:
             case _:
                 raise ValueError(f"Invalid value for `how`: {how}")
 
+    def _group_by(
+        self,
+        group_by: Literal["optimizer", "benchmark", "seed", "memory"] | None,
+    ) -> Mapping[str, list[Run]]:
+        """Group the runs by the specified group."""
+        if group_by is None:
+            return {"all": self.experiments}
+
+        _grouped_runs = {}
+        for run in self.experiments:
+            key = ""
+            match group_by:
+                case "optimizer":
+                    key = run.optimizer.name
+                case "benchmark":
+                    key = run.benchmark.name
+                case "seed":
+                    key = str(run.seed)
+                case "memory":
+                    key = f"{run.mem_req_MB}_MB"
+                case _:
+                    raise ValueError(f"Invalid group_by: {group_by}")
+
+            if key not in _grouped_runs:
+                _grouped_runs[key] = []
+            _grouped_runs[key].append(run)
+
+        return _grouped_runs
+
+    def _dump_runs(
+        self,
+        group_by: Literal["optimizer", "benchmark", "seed", "memory"] | None,
+        exp_dir: Path,
+        *,
+        overwrite: bool = False,
+        precision: int | None = None,
+    ) -> None:
+        """Dump the grouped runs into separate files."""
+        grouped_runs = self._group_by(group_by)
+        for key, runs in grouped_runs.items():
+            with (exp_dir / f"dump_{key}.txt").open("w") as f:
+                for run in runs:
+                    f.write(
+                        f"python -m hpo_glue --exp_name {self.name}"
+                        f" --optimizers {run.optimizer.name}"
+                        f" --benchmarks {run.benchmark.name}"
+                        f" --seeds {run.seed}"
+                        f" --budget {run.problem.budget.total}"
+                    )
+                    if overwrite:
+                        f.write(" --overwrite")
+                    if run.continuations:
+                        f.write(" --continuations")
+                    if precision:
+                        f.write(f" --precision {precision}")
+                    f.write("\n")
+            logger.info(f"Dumped experiments to {exp_dir / f'dump_{key}.txt'}")
+
 
     def optimize(  # noqa: C901, PLR0912
         self,
@@ -252,6 +310,7 @@ class Study:
         continuations: bool = False,
         precision: int | None = None,
         exec_type: Literal["sequential", "parallel", "dump"] = "sequential",
+        group_by: Literal["optimizer", "benchmark", "seed", "memory"] | None = None,
     ) -> None:
         """Execute multiple atomic runs using a list of Optimizers and a list of Benchmarks.
 
@@ -276,6 +335,10 @@ class Study:
 
             exec_type: The type of execution to use.
             Supported types are "sequential", "parallel" and "dump".
+
+            group_by: The grouping to use for the runs dump.
+            Supported types are "optimizer", "benchmark", "seed", and "memory"
+            Only used when `exec_type` is "dump" for multiple runs.
 
         """
         if not isinstance(optimizers, list):
@@ -306,7 +369,7 @@ class Study:
 
         exp_dir = DEFAULT_RELATIVE_EXP_DIR #/ self.name
 
-        experiments = Study.generate(
+        self.experiments = Study.generate(
             optimizers=_optimizers,
             benchmarks=_benchmarks,
             expdir=exp_dir,
@@ -317,14 +380,14 @@ class Study:
             objectives=1,
             on_error="ignore",
         )
-        for run in experiments:
+        for run in self.experiments:
             run.write_yaml()
 
         if len(_optimizers) > 1 or len(_benchmarks) > 1:
             match exec_type:
                 case "sequential":
                     logger.info("Running experiments sequentially")
-                    for run in experiments:
+                    for run in self.experiments:
                         # run.create_env(hpo_glue=f"-e {Path.cwd()}")
                         run.run(
                             overwrite=overwrite,
@@ -335,27 +398,17 @@ class Study:
                 case "parallel":
                     raise NotImplementedError("Parallel execution not implemented yet!")
                 case "dump":
-                    with (exp_dir / "dump.txt").open("w") as f:
-                        for run in experiments:
-                            f.write(
-                                f"python -m hpo_glue --exp_name {self.name}"
-                                f" --optimizers {run.optimizer.name}"
-                                f" --benchmarks {run.benchmark.name}"
-                                f" --seeds {run.seed}"
-                                f" --budget {run.problem.budget.total}"
-                            )
-                            if overwrite:
-                                f.write(" --overwrite")
-                            if continuations:
-                                f.write(" --continuations")
-                            if precision:
-                                f.write(f" --precision {precision}")
-                            f.write("\n")
-                    logger.info(f"Dumped experiments to {exp_dir / 'dump.txt'}")
+                    logger.info("Dumping experiments")
+                    self._dump_runs(
+                        group_by=group_by,
+                        exp_dir=exp_dir,
+                        overwrite=overwrite,
+                        precision=precision,
+                    )
                 case _:
                     raise ValueError(f"Invalid exceution type: {exec_type}")
         else:
-            run = experiments[0]
+            run = self.experiments[0]
             # run.create_env(hpo_glue=f"-e {Path.cwd()}")
             run.run(
                 overwrite=overwrite,

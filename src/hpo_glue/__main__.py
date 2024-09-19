@@ -16,6 +16,7 @@ def glue_study(  # noqa: D103
     overwrite: bool = False,  # noqa: FBT001, FBT002
     continuations: bool = False,  # noqa: FBT001, FBT002
     exec_type: str = "sequential",
+    group_by: str = None,
 ):
     study = create_study(
         results_dir=results_dir,
@@ -31,6 +32,7 @@ def glue_study(  # noqa: D103
         overwrite=overwrite,
         continuations=continuations,
         exec_type=exec_type,
+        group_by=group_by,
     )
 
 if __name__ == "__main__":
@@ -102,6 +104,14 @@ if __name__ == "__main__":
         choices=["sequential", "parallel", "dump"],
         help="Execution type",
     )
+    parser.add_argument(
+        "--group_by", "-g",
+        type=str,
+        default=None,
+        choices=["optimizer", "benchmark", "seed", "memory"],
+        help="Runs dump group by\n"
+        "Only used if exec_type is dump"
+    )
     args = parser.parse_args()
 
     glue_study(
@@ -116,5 +126,6 @@ if __name__ == "__main__":
         overwrite=args.overwrite,
         continuations=args.continuations,
         exec_type=args.exec_type,
+        group_by=args.group_by,
     )
 
