@@ -21,6 +21,24 @@ OPTIMIZERS: dict[str, type[Optimizer]] = {
     My_Opt.name: My_Opt,
 }
 
+MF_OPTIMIZERS: dict[str, type[Optimizer]] = {}
+NON_MF_OPTIMIZERS: dict[str, type[Optimizer]] = {}
+MO_OPTIMIZERS: dict[str, type[Optimizer]] = {}
+SO_OPTIMIZERS: dict[str, type[Optimizer]] = {}
+
+for name, opt in OPTIMIZERS.items():
+    if "single" in opt.support.fidelities:
+        MF_OPTIMIZERS[name] = opt
+    else:
+        NON_MF_OPTIMIZERS[name] = opt
+    if "many" in opt.support.objectives:
+        MO_OPTIMIZERS[name] = opt
+    if "single" in opt.support.objectives:
+        SO_OPTIMIZERS[name] = opt
 __all__ = [
     "OPTIMIZERS",
+    "MF_OPTIMIZERS",
+    "NON_MF_OPTIMIZERS",
+    "MO_OPTIMIZERS",
+    "SO_OPTIMIZERS",
 ]

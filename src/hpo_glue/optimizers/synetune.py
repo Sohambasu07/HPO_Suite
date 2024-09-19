@@ -171,7 +171,7 @@ class SyneTuneBO(SyneTuneOptimizer):
                 raise ValueError("SyneTuneBO does not support tabular benchmarks")
             case _:
                 raise TypeError("config_space must be of type ConfigSpace.ConfigurationSpace")
-            
+
         if isinstance(problem.fidelity, tuple):
             synetune_cs[problem.fidelity[0]] = problem.fidelity[1]  # TODO: Check this
 
@@ -194,7 +194,7 @@ class SyneTuneBOHB(SyneTuneOptimizer):
 
     name = "SyneTune_BOHB"
     support = Problem.Support(
-        fidelities=(None,),
+        fidelities=(None, "single"),
         objectives=("single",),
         cost_awareness=(None,),
         tabular=False,
