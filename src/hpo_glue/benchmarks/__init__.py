@@ -9,11 +9,23 @@ if TYPE_CHECKING:
     from hpo_glue.benchmark import BenchmarkDescription
 
 BENCHMARKS: dict[str, BenchmarkDescription] = {}
+MF_BENCHMARKS: dict[str, BenchmarkDescription] = {}
+NON_MF_BENCHMARKS: dict[str, BenchmarkDescription] = {}
 for desc in mfpbench_benchmarks():
     BENCHMARKS[desc.name] = desc
+    if desc.fidelities is not None:
+        MF_BENCHMARKS[desc.name] = desc
+    else:
+        NON_MF_BENCHMARKS[desc.name] = desc
 for desc in pymoo_benchmarks():
     BENCHMARKS[desc.name] = desc
+    if desc.fidelities is not None:
+        MF_BENCHMARKS[desc.name] = desc
+    else:
+        NON_MF_BENCHMARKS[desc.name] = desc
 
 __all__ = [
     "BENCHMARKS",
+    "MF_BENCHMARKS",
+    "NON_MF_BENCHMARKS",
 ]
