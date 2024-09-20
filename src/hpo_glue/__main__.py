@@ -12,14 +12,14 @@ def glue_study(  # noqa: D103
     budget: int,
     precision: int,
     exp_name: str,
-    results_dir: Path,
+    output_dir: Path,
     overwrite: bool = False,  # noqa: FBT001, FBT002
     continuations: bool = False,  # noqa: FBT001, FBT002
     exec_type: str = "sequential",
     group_by: str = None,
 ):
     study = create_study(
-        results_dir=results_dir,
+        output_dir=output_dir,
         name=exp_name,
     )
     study.optimize(
@@ -43,9 +43,8 @@ if __name__ == "__main__":
         help="Experiment name",
     )
     parser.add_argument(
-        "--results_dir", "-r",
+        "--output_dir", "-od",
         type=Path,
-        default="hpo-glue-output",
         help="Results directory",
     )
     parser.add_argument(
@@ -122,7 +121,7 @@ if __name__ == "__main__":
         budget=args.budget,
         precision=args.precision,
         exp_name=args.exp_name,
-        results_dir = args.results_dir,
+        output_dir = args.output_dir,
         overwrite=args.overwrite,
         continuations=args.continuations,
         exec_type=args.exec_type,

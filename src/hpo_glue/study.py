@@ -42,16 +42,18 @@ class Study:
     def __init__(
         self,
         name: str,
-        results_dir: Path = Path("./hpo-glue-output"),
+        output_dir: Path | None = None,
     ):
         """Initialize a Study object with a name and a results directory.
 
         Args:
             name: The name of the study.
-            results_dir: The directory to store the experiment results.
+            output_dir: The directory to store the experiment results.
         """
         self.name = name
-        self.results_dir = results_dir
+        if output_dir is None:
+            output_dir = Path.cwd().absolute().parent / "hpo-glue-output"
+        self.output_dir = output_dir
 
     @classmethod
     def generate_seeds(
@@ -64,7 +66,7 @@ class Study:
 
 
     @classmethod
-    def generate(  # noqa: PLR0913
+    def generate(  # noqa: C901, PLR0912, PLR0913
         cls,
         optimizers: (
             type[Optimizer]
@@ -273,7 +275,8 @@ class Study:
             with (exp_dir / f"dump_{key}.txt").open("w") as f:
                 for run in runs:
                     f.write(
-                        f"python -m hpo_glue --exp_name {self.name}"
+                        f"python -m hpo_glue"
+                        # f"--exp_name {self.name}"
                         f" --optimizers {run.optimizer.name}"
                         f" --benchmarks {run.benchmark.name}"
                         f" --seeds {run.seed}"
@@ -367,7 +370,7 @@ class Study:
             assert benchmark in BENCHMARKS, f"Benchmark must be one of {BENCHMARKS.keys()}"
             _benchmarks.append(BENCHMARKS[benchmark])
 
-        exp_dir = DEFAULT_RELATIVE_EXP_DIR #/ self.name
+        exp_dir = self.output_dir
 
         self.experiments = Study.generate(
             optimizers=_optimizers,
@@ -388,7 +391,7 @@ class Study:
                 case "sequential":
                     logger.info("Running experiments sequentially")
                     for run in self.experiments:
-                        # run.create_env(hpo_glue=f"-e {Path.cwd()}")
+                        run.create_env(hpo_glue=f"-e {Path.cwd()}")
                         run.run(
                             overwrite=overwrite,
                             progress_bar=False,
@@ -409,7 +412,7 @@ class Study:
                     raise ValueError(f"Invalid exceution type: {exec_type}")
         else:
             run = self.experiments[0]
-            # run.create_env(hpo_glue=f"-e {Path.cwd()}")
+            run.create_env(hpo_glue=f"-e {Path.cwd()}")
             run.run(
                 overwrite=overwrite,
                 progress_bar=False,
@@ -419,10 +422,13 @@ class Study:
 
 
 def create_study(
-        results_dir = DEFAULT_RELATIVE_EXP_DIR,
+        output_dir: Path | None = None,
         name: str | None = None,
     ) -> Study:
     """Create a Study object."""
+    if output_dir is None:
+        output_dir = Path.cwd().absolute().parent / "hpo-glue-output"
+    """Create a Study object."""
     if name is None:
         name = f"glue_study_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    return Study(name, results_dir)
+    return Study(name, output_dir)
