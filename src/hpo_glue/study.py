@@ -309,11 +309,11 @@ class Study:
         seeds: Iterable[int] | int | None = None,
         num_seeds: int = 1,
         budget: int = 50,
-        overwrite: bool = False,
-        continuations: bool = False,
         precision: int | None = None,
         exec_type: Literal["sequential", "parallel", "dump"] = "sequential",
         group_by: Literal["optimizer", "benchmark", "seed", "memory"] | None = None,
+        overwrite: bool = False,
+        continuations: bool = False,
     ) -> None:
         """Execute multiple atomic runs using a list of Optimizers and a list of Benchmarks.
 

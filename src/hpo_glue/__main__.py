@@ -1,22 +1,27 @@
+from __future__ import annotations
+
 import argparse
 from pathlib import Path
+
+import yaml
 
 from hpo_glue.study import create_study
 
 
-def glue_study(  # noqa: D103
+def glue_study(  # noqa: D103, PLR0913
     optimizers: str,
     benchmarks: str,
+    *,
     seeds: list,
     num_seeds: int,
     budget: int,
-    precision: int,
     exp_name: str,
     output_dir: Path,
-    overwrite: bool = False,  # noqa: FBT001, FBT002
-    continuations: bool = False,  # noqa: FBT001, FBT002
-    exec_type: str = "sequential",
-    group_by: str = None,
+    exec_type: str,
+    group_by: str,
+    precision: int,
+    overwrite: bool,
+    continuations: bool,
 ):
     study = create_study(
         output_dir=output_dir,
@@ -35,6 +40,10 @@ def glue_study(  # noqa: D103
         group_by=group_by,
     )
 
+def _get_from_yaml_config(config_path: Path) -> dict:
+    with config_path.open() as file:
+        return yaml.safe_load(file)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -48,17 +57,20 @@ if __name__ == "__main__":
         help="Results directory",
     )
     parser.add_argument(
+        "--exp_config", "-ec",
+        type=Path,
+        help="Absolute path to the experiment configuration file",
+    )
+    parser.add_argument(
         "--optimizers", "-o",
         nargs="+",
         type=str,
-        required=True,
         help="Optimizer to use",
     )
     parser.add_argument(
         "--benchmarks", "-b",
         nargs="+",
         type=str,
-        required=True,
         help="Benchmark to use",
     )
     parser.add_argument(
@@ -113,18 +125,35 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    glue_study(
-        optimizers=args.optimizers,
-        benchmarks=args.benchmarks,
-        seeds=args.seeds,
-        num_seeds=args.num_seeds,
-        budget=args.budget,
-        precision=args.precision,
-        exp_name=args.exp_name,
-        output_dir = args.output_dir,
-        overwrite=args.overwrite,
-        continuations=args.continuations,
-        exec_type=args.exec_type,
-        group_by=args.group_by,
-    )
+    if args.exp_config:
+        config = _get_from_yaml_config(args.exp_config)
+        glue_study(
+            optimizers=config["optimizers"],
+            benchmarks=config["benchmarks"],
+            seeds=config.get("seeds"),
+            num_seeds=config.get("num_seeds", 1),
+            budget=config.get("budget", 50),
+            precision=config.get("precision"),
+            exp_name=config.get("exp_name"),
+            output_dir=config.get("output_dir"),
+            overwrite=config.get("overwrite", False),
+            continuations=config.get("continuations", False),
+            exec_type=config.get("exec_type", "dump"),
+            group_by=config.get("group_by"),
+        )
+    else:
+        glue_study(
+            optimizers=args.optimizers,
+            benchmarks=args.benchmarks,
+            seeds=args.seeds,
+            num_seeds=args.num_seeds,
+            budget=args.budget,
+            precision=args.precision,
+            exp_name=args.exp_name,
+            output_dir = args.output_dir,
+            overwrite=args.overwrite,
+            continuations=args.continuations,
+            exec_type=args.exec_type,
+            group_by=args.group_by,
+        )
 
