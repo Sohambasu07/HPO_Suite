@@ -33,6 +33,10 @@ SECOND_OBJ_COL = "result.objective.2.value"
 SECOND_OBJ_MINIMIZE_COL = "problem.objective.2.minimize"
 BUDGET_USED_COL = "result.budget_used_total"
 BUDGET_TOTAL_COL = "problem.budget.total"
+FIDELITY_COL = "result.fidelity.1.value"
+FIDELITY_MIN_COL = "problem.fidelity.1.min"
+FIDELITY_MAX_COL = "problem.fidelity.1.max"
+CONTINUATIONS_COL = "result.continuations_cost.1"
 
 
 def plot_results(  # noqa: PLR0915
@@ -72,6 +76,7 @@ def plot_results(  # noqa: PLR0915
     optimizers = list(report.keys())
     plt.figure(figsize=(20, 10))
     optim_res_dict = {}
+    contiuations = False
     for instance in optimizers:
         logger.info(f"Plotting {instance}")
         optim_res_dict[instance] = {}
@@ -87,7 +92,20 @@ def plot_results(  # noqa: PLR0915
                 case _:
                     raise NotImplementedError(f"Budget type {budget_type} not implemented")
 
+            if results[FIDELITY_COL].iloc[0] is not None:
+                budget_list = results[FIDELITY_COL].values.astype(np.float64)
+                budget_list = np.cumsum(budget_list)
+                budget = budget_list[-1]
+
+            if results[CONTINUATIONS_COL].iloc[0] is not None:
+                continuations = True
+                continuations_list = results[CONTINUATIONS_COL].values.astype(np.float64)
+                continuations_list = np.cumsum(continuations_list)
+
             seed_cost_dict[seed] = pd.Series(cost_list, index=budget_list)
+            if continuations:
+                seed_cont_dict = pd.Series(cost_list, index=continuations_list)
+
         seed_cost_df = pd.DataFrame(seed_cost_dict)
         seed_cost_df = seed_cost_df.ffill(axis=0)
         seed_cost_df = seed_cost_df.dropna(axis=0)
@@ -101,6 +119,7 @@ def plot_results(  # noqa: PLR0915
         means[budget] = means.iloc[-1]
         std[budget] = std.iloc[-1]
         col_next = next(colors_mean)
+
         plt.step(
             means.index,
             means,
@@ -124,6 +143,44 @@ def plot_results(  # noqa: PLR0915
             edgecolor=col_next,
             linewidth=2,
         )
+
+        #For plotting continuations
+        if continuations:
+            seed_cont_df = pd.DataFrame(seed_cont_dict)
+            seed_cont_df = seed_cont_df.ffill(axis=0)
+            seed_cont_df = seed_cont_df.dropna(axis=0)
+            means_cont = pd.Series(seed_cont_df.mean(axis=1), name=f"means_{instance}")
+            std_cont = pd.Series(seed_cont_df.std(axis=1), name=f"std_{instance}")
+            optim_res_dict[instance]["cont_means"] = means_cont
+            optim_res_dict[instance]["cont_std"] = std_cont
+            means_cont = means_cont.cummin() if minimize else means_cont.cummax()
+            means_cont = means_cont.drop_duplicates()
+            std_cont = std_cont.loc[means_cont.index]
+            col_next = next(colors_mean)
+
+            plt.step(
+                means_cont.index,
+                means_cont,
+                where="post",
+                label=f"{instance}_w_continuations",
+                marker=next(markers),
+                markersize=10,
+                markerfacecolor="#ffffff",
+                markeredgecolor=col_next,
+                markeredgewidth=2,
+                color=col_next,
+                linewidth=3,
+            )
+            plt.fill_between(
+                means_cont.index,
+                means_cont - std_cont,
+                means_cont + std_cont,
+                alpha=0.2,
+                step="post",
+                color=col_next,
+                edgecolor=col_next,
+                linewidth=2,
+            )
     plt.xlabel(f"{budget_type}")
     plt.ylabel(f"{objective}")
     plt.title(f"Performance of Optimizers on {benchmarks_name}")
@@ -175,7 +232,7 @@ def plot_by_ranking(
 
 def agg_data(exp_dir: str | Path) -> None:
     """Aggregate the data from the run directory for plotting."""
-    exp_dir = ROOT_DIR / exp_dir
+    exp_dir = exp_dir
     df_agg = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
     budget_type: str | None = None
     budget: int | None = None
@@ -201,7 +258,16 @@ def agg_data(exp_dir: str | Path) -> None:
             budget = res_df[BUDGET_TOTAL_COL].iloc[0]
             minimize = res_df[SINGLE_OBJ_MINIMIZE_COL].iloc[0]
             seed = res_df[SEED_COL].iloc[0]
-            res_df = res_df[[SINGLE_OBJ_COL, BUDGET_USED_COL]]
+            res_df = res_df[
+                [
+                    SINGLE_OBJ_COL,
+                    BUDGET_USED_COL,
+                    FIDELITY_COL,
+                    CONTINUATIONS_COL,
+                    FIDELITY_MIN_COL,
+                    FIDELITY_MAX_COL
+                ]
+            ]
             df_agg[instance][int(seed)] = {"results": res_df}
             assert budget_type is not None
             assert budget is not None
@@ -317,7 +383,10 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--results_dir", type=str, help="Location of the results directory", default="./results"
+        "--results_dir",
+        type=Path,
+        help="Location of the results directory",
+        default="../hpo-glue-output"
     )
 
     parser.add_argument(
@@ -328,9 +397,9 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    if args.exp_dir is None:
-        raise ValueError("Experiment directory not specified")
+    if args.results_dir is None:
+        raise ValueError("Results directory not specified")
 
     # exp_dir = args.root_dir / args.results_dir / args.exp_dir
 
-    agg_data(args.exp_dir)
+    agg_data(args.results_dir)
