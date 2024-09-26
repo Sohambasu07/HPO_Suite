@@ -76,7 +76,7 @@ def plot_results(  # noqa: PLR0915
     optimizers = list(report.keys())
     plt.figure(figsize=(20, 10))
     optim_res_dict = {}
-    contiuations = False
+    continuations = False
     for instance in optimizers:
         logger.info(f"Plotting {instance}")
         optim_res_dict[instance] = {}
@@ -189,50 +189,10 @@ def plot_results(  # noqa: PLR0915
     plt.legend()
     save_dir.mkdir(parents=True, exist_ok=True)
     plt.savefig(save_dir / f"{benchmarks_name}_performance.png")
-    # plt.show()
-    # optim_means = pd.DataFrame({k: v["means"] for k, v in optim_res_dict.items()})
-    # optim_stds = pd.DataFrame({k: v["std"] for k, v in optim_res_dict.items()})
-    # if len(optimizers) > 1:
-    #     plot_by_ranking(
-    #         optim_means=optim_means,
-    #         optim_stds=optim_stds,
-    #         budget_type=budget_type,
-    #         benchmarks_name=benchmarks_name,
-    #     )
-
-
-def plot_by_ranking(
-    *,
-    optim_means: pd.DataFrame,
-    optim_stds: pd.DataFrame,
-    budget_type: str,
-    benchmarks_name: str,
-) -> None:
-    """Plots the results by ranking the optimizers."""
-    optim_means = optim_means.ffill(axis=0)
-    optim_means = optim_means.dropna(axis=0)
-    optim_stds = optim_stds.ffill(axis=0)
-    optim_stds = optim_stds.dropna(axis=0)
-
-    rankings = optim_means.rank(ascending=False, axis=1, method="min")
-
-    # Plot the rankings
-    plt.figure(figsize=(20, 10))
-    for optimizer in optim_means.columns:
-        plt.plot(rankings.index, rankings[optimizer], label=optimizer)
-
-    # Customize the plot
-    plt.title(f"Optimizer Rankings Over {budget_type} on {benchmarks_name}")
-    plt.xlabel(budget_type)
-    plt.ylabel("Rankings")
-    plt.legend()
-    plt.grid(visible=True)
-    plt.show()
 
 
 def agg_data(exp_dir: str | Path) -> None:
     """Aggregate the data from the run directory for plotting."""
-    exp_dir = exp_dir
     df_agg = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
     budget_type: str | None = None
     budget: int | None = None
@@ -399,7 +359,5 @@ if __name__ == "__main__":
 
     if args.results_dir is None:
         raise ValueError("Results directory not specified")
-
-    # exp_dir = args.root_dir / args.results_dir / args.exp_dir
 
     agg_data(args.results_dir)

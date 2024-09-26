@@ -10,7 +10,6 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
-import numpy as np
 from tqdm import TqdmWarning, tqdm
 
 from hpo_glue.budget import CostBudget, TrialBudget
@@ -124,7 +123,7 @@ def _run(
     return report
 
 
-def _run_problem_with_trial_budget(
+def _run_problem_with_trial_budget(  # noqa: C901, PLR0912
     *,
     run: Run,
     optimizer: Optimizer,
