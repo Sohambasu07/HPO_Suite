@@ -159,7 +159,7 @@ class Run:
         self.requirements_ran_with_file = self.working_dir / "requirements_ran_with.txt"
         self.env_description_file = self.working_dir / "env.yaml"
         self.post_install_steps = self.working_dir / "venv_post_install.sh"
-        self.run_yaml_path = self.working_dir / "run.yaml"
+        self.run_yaml_path = self.working_dir / "run_config.yaml"
         self.env_path = self.expdir / "envs" / self.env.identifier
         self.mem_req_MB = self.problem.mem_req_MB + self.optimizer.mem_req_MB
 

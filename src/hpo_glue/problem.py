@@ -114,13 +114,13 @@ class Problem:
         match self.objective:
             case tuple():
                 self.is_multiobjective = False
-                name_parts.append(f"objective={self.objective[0]}")
+                # name_parts.append(f"objective={self.objective[0]}")
             case Mapping():
                 if len(self.objective) == 1:
                     raise ValueError("Single objective should be a tuple, not a mapping")
 
                 self.is_multiobjective = True
-                name_parts.append("objective=" + ",".join(self.objective.keys()))
+                # name_parts.append("objective=" + ",".join(self.objective.keys()))
             case _:
                 raise TypeError("Objective must be a tuple (name, measure) or a mapping")
 
@@ -136,7 +136,7 @@ class Problem:
                     self.supports_trajectory = True
                 else:
                     self.supports_trajectory = False
-                name_parts.append(f"fidelity={_name}")
+                # name_parts.append(f"fidelity={_name}")
             case Mapping():
                 if len(self.fidelity) == 1:
                     raise ValueError("Single fidelity should be a tuple, not a mapping")
@@ -144,7 +144,7 @@ class Problem:
                 self.is_multifidelity = False
                 self.is_manyfidelity = True
                 self.supports_trajectory = False
-                name_parts.append("fidelity=" + ",".join(self.fidelity.keys()))
+                # name_parts.append("fidelity=" + ",".join(self.fidelity.keys()))
             case _:
                 raise TypeError("Fidelity must be a tuple (name, fidelity) or a mapping")
 
@@ -152,12 +152,13 @@ class Problem:
             case None:
                 pass
             case (_name, _measure):
-                name_parts.append(f"cost={_name}")
+                # name_parts.append(f"cost={_name}")
+                pass
             case Mapping():
                 if len(self.cost) == 1:
                     raise ValueError("Single cost should be a tuple, not a mapping")
 
-                name_parts.append("cost=" + ",".join(self.cost.keys()))
+                # name_parts.append("cost=" + ",".join(self.cost.keys()))
 
         self.name = ".".join(name_parts)
 

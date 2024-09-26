@@ -60,7 +60,7 @@ class Runtime_hist():
         elif config.fid not in self.configs[config.t][fid_type]:
             self.configs[config.t][fid_type].append(config.fid)
         else:
-            raise ValueError(f"Fidelity {config.fid} sampled twice by Optimizer!")
+            raise ValueError(f"Fidelity {config.fid} sampled twice by Optimizer!") #TODO: raise warning and don't query benchmark just use previous
 
     def get_continuations_cost(
             self,
