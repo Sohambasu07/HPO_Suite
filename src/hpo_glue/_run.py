@@ -10,6 +10,7 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
+import numpy as np
 from tqdm import TqdmWarning, tqdm
 
 from hpo_glue.budget import CostBudget, TrialBudget
@@ -43,11 +44,11 @@ class Conf:
     fid: int | float
 
 @dataclass
-class Runtime_hist():
+class Runtime_hist:
     configs: dict[tuple, dict[str, list[int | float]]] = field(default_factory=dict)
 
     def add_conf(
-        self, 
+        self,
         config: Conf,
         fid_type: str
     ) -> None:
@@ -57,10 +58,13 @@ class Runtime_hist():
             }
         elif fid_type not in self.configs[config.t]:
             self.configs[config.t][fid_type] = [config.fid]
+        elif config.fid < self.configs[config.t][fid_type][-1]:
+            raise NotImplementedError("Decreasing fidelity not yet implemented!")
         elif config.fid not in self.configs[config.t][fid_type]:
             self.configs[config.t][fid_type].append(config.fid)
         else:
-            raise ValueError(f"Fidelity {config.fid} sampled twice by Optimizer!") #TODO: raise warning and don't query benchmark just use previous
+            warnings.filterwarnings("error")
+            warnings.warn(f"Fidelity {config.fid} sampled twice by Optimizer!", stacklevel=2)
 
     def get_continuations_cost(
             self,
@@ -152,16 +156,29 @@ def _run_problem_with_trial_budget(
                 try:
                     query = optimizer.ask()
                     config = Conf(query.config.to_tuple(run.problem.precision), query.fidelity[1])
-                    runhist.add_conf(
-                        config=config,
-                        fid_type=run.problem.fidelity[0] #TODO: Manyfidelity not implemented -> turn into error
-                    )
-                    result = benchmark.query(query)
-                    if continuations:
-                        result.continuations_cost = runhist.get_continuations_cost(
+
+                    resample_flag = False
+                    try:
+                        runhist.add_conf(
                             config=config,
-                            fid_type=run.problem.fidelity[0]
-                    )
+                            fid_type=run.problem.fidelity[0] #TODO: Raise Manyfidelity NotImplementedError
+                        )
+                    except RuntimeWarning:
+                        resample_flag = True
+
+                    if resample_flag: # NOTE: Not a cheap operation since we don't store the costs in the continuations dict
+                        for res in history:
+                            if Conf(res.config.to_tuple(run.problem.precision), res.fidelity[1]) == config:  # noqa: E501
+                                result = res
+                                break
+                    else:
+                        result = benchmark.query(query)
+                        if continuations:
+                            result.continuations_cost = runhist.get_continuations_cost(
+                                config=config,
+                                fid_type=run.problem.fidelity[0]
+                            )
+
                     budget_cost = _trial_budget_cost(
                         value=result.fidelity,
                         problem=run.problem,
