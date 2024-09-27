@@ -38,7 +38,9 @@ dev = ["ruff", "mypy", "pre-commit"]
 optuna = ["optuna"]
 yahpo-gym = ["yahpo-gym"]
 smac = ["smac"]
+dehb = ["dehb"]
 syne-tune = ["syne-tune[basic]", "syne-tune[gpsearchers]"]     # TODO(eddiebergman): Do we need more here?
+mfpbench_main = ["mf-prior-bench"]
 
 [project.urls]
 source = "https://github.com/Sohambasu07/HPO_Suite/"
