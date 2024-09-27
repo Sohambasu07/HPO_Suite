@@ -16,10 +16,10 @@ if [! -f $dump_file_path]; then
     exit 1
 fi
 
-if [[ $dump_file_path =~ dump_([0-9]+MB) ]]; then
-    MEMORY="${BASH_REMATCH[1]}"  # Extract memory (e.g., 2048MB, 4GB)
+if [[ $DUMP_FILENAME =~ dump_([0-9]+)MB\.txt$ ]]; then
+    MEMORY="${BASH_REMATCH[1]}MB"  # Extract memory (e.g., 2048MB)
 else
-    MEMORY="4GB"  # Default value if no match found
+    MEMORY="4096MB"  # Default value in MB if no match found
 fi
 
 # Set the memory limit

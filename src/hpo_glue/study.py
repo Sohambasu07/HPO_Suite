@@ -251,7 +251,7 @@ class Study:
                 case "seed":
                     key = str(run.seed)
                 case "memory":
-                    key = f"{run.mem_req_MB}_MB"
+                    key = f"{run.mem_req_MB}MB"
                 case _:
                     raise ValueError(f"Invalid group_by: {group_by}")
 
