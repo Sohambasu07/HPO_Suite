@@ -330,7 +330,7 @@ class Study:
 
             overwrite: Whether to overwrite existing results.
 
-            continuations: Whether to continue from previous runs.
+            continuations: Whether to calculate continuations cost.
 
             precision: The precision of the optimization.
 

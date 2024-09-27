@@ -231,11 +231,10 @@ class Run:
         self.continuations = continuations
         self.set_state(Run.State.PENDING)
         return _run(
-            run=self, 
-            on_error=on_error, 
+            run=self,
+            on_error=on_error,
             progress_bar=progress_bar,
             continuations=continuations,
-            # precision=precision
         )
 
     def create_env(

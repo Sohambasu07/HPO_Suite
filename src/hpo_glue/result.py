@@ -29,7 +29,7 @@ class Result:
     """Everything returned by the benchmark for a given query at the fideltiy."""
 
     continuations_cost: float = np.nan
-    """The cost if coninuations is set to True."""
+    """The coninuations cost if run.continuations set to True."""
 
     budget_cost: float = np.nan
     """The amount of budget used to generate this result."""
