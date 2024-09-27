@@ -1,12 +1,12 @@
-# Sample SLURM script to run experiments from a configuration file
-# $CONFIG_FILE is a placeholder for the path to the configuration file and must be replaced with the actual path to the configuration file in the SBATCH command.
-
 #!/bin/bash
 #SBATCH --partition mlhiwidlc_gpu-rtx2080    # short: -p mlhiwidlc_gpu-rtx2080
 #SBATCH --job-name HPOSuite_dump           #  short: -J HPOSuite_dump
 #SBATCH --output logs/%x_%A.out   # STDOUT  %x and %A will be replaced by the job name and job id, respectively. short: -o logs/%x_%A_job_name.out
 #SBATCH --error logs/%x_%A.err    # STDERR  short: -e logs/%x_%A_job_name.err
 #SBATCH --mem=2GB 
+
+# Sample SLURM script to run experiments from a configuration file
+# $CONFIG_FILE is a placeholder for the path to the configuration file and must be replaced with the actual path to the configuration file in the SBATCH command.
 
 echo "Workingdir: $PWD";
 echo "Started at $(date)";
