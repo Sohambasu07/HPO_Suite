@@ -41,7 +41,7 @@ smac = ["smac"]
 dehb = ["dehb"]
 syne-tune = ["syne-tune[basic]", "syne-tune[gpsearchers]"]     # TODO(eddiebergman): Do we need more here?
 mfpbench_main = ["mf-prior-bench"]
-pymoo = [pymoo]
+pymoo = ["pymoo"]
 
 [project.urls]
 source = "https://github.com/Sohambasu07/HPO_Suite/"
