@@ -10,7 +10,7 @@
 
 
 # Check if the dump file exists
-if [ ! -f $dump_file_path]; then
+if [ ! -f $dump_file_path ]; then
     echo "Dump file not found."
     exit 1
 fi
@@ -32,17 +32,24 @@ source ~/repos/automl_env/bin/activate
 
 start=`date +%s`
 
-# Count the number of lines in the dump file
-TOTAL_LINES=$(wc -l < $dump_file_path)
+# # Count the number of lines in the dump file
+# TOTAL_LINES=$(wc -l < $dump_file_path)
 
-# Get the specific command from the file for this array task
-COMMAND=$(sed -n "${SLURM_ARRAY_TASK_ID}p" $COMMAND_FILE)
+# # Get the specific command from the file for this array task
+# COMMAND=$(sed -n "${SLURM_ARRAY_TASK_ID}p" $COMMAND_FILE)
 
-# Print the command (for debugging purposes)
-echo "Running command: $COMMAND"
+# # Print the command (for debugging purposes)
+# echo "Running command: $COMMAND"
 
-# Execute the command
-eval $COMMAND
+# # Execute the command
+# eval $COMMAND
+
+# Read the file line by line and execute each command as a shell command
+while IFS= read -r line
+do
+  echo "Executing: $line"
+  $line  # Run the Python command as a shell command
+done < "$dump_file_path"
 
 end=`date +%s`
 runtime=$((end-start))
