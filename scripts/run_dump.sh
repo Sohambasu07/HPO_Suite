@@ -1,10 +1,11 @@
 # Sample SLURM script to run array job from a dump file grouped by memory requirements
+# NOTE: $FILEPATH is a placeholder for the path to the dump file and must be replaced with the actual path to the dump file in the SBATCH command.
 
 #!/bin/bash
 #SBATCH --partition mlhiwidlc_gpu-rtx2080    # short: -p mlhiwidlc_gpu-rtx2080
 #SBATCH --job-name HPOSuite_test_SLURMArray            #  short: -J HPOSuite_test_SLURMArray
-#SBATCH --output logs/%x-%A.out   # STDOUT  %x and %A will be replaced by the job name and job id, respectively. short: -o logs/%x-%A-job_name.out
-#SBATCH --error logs/%x_%A_%a.err    # STDERR  short: -e logs/%x-%A-job_name.out
+#SBATCH --output logs/%x_%A_%a.out   # STDOUT  %x and %A will be replaced by the job name and job id, respectively. short: -o logs/%x_%A_%a.out
+#SBATCH --error logs/%x_%A_%a.err    # STDERR  short: -e logs/%x_%A_%a.err
 
 dump_file_path=$FILEPATH
 
