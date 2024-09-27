@@ -50,7 +50,8 @@ class Runtime_hist:
         self,
         config: Conf,
         fid_type: str
-    ) -> None:
+    ) -> int:
+        flag = 0
         if config.t not in self.configs:
             self.configs[config.t] = {
                 fid_type: [config.fid]
@@ -62,8 +63,12 @@ class Runtime_hist:
         elif config.fid not in self.configs[config.t][fid_type]:
             self.configs[config.t][fid_type].append(config.fid)
         else:
-            warnings.filterwarnings("error")
-            warnings.warn(f"Fidelity {config.fid} sampled twice by Optimizer!", stacklevel=2)
+            warnings.warn(
+                f"Fidelity {config.fid} sampled twice by Optimizer for config {config.t}!",
+                stacklevel=2
+            )
+            flag = 1
+        return flag
 
     def get_continuations_cost(
             self,
@@ -157,19 +162,18 @@ def _run_problem_with_trial_budget(  # noqa: C901, PLR0912
                     config = Conf(query.config.to_tuple(run.problem.precision), query.fidelity[1])
 
                     resample_flag = False
-                    try:
-                        runhist.add_conf(
-                            config=config,
-                            fid_type=run.problem.fidelity[0] #TODO: Raise Manyfidelity NotImplementedError
-                        )
-                    except RuntimeWarning:
+                    flag = runhist.add_conf(
+                        config=config,
+                        fid_type=run.problem.fidelity[0] #TODO: Raise Manyfidelity NotImplementedError
+                    )
+                    if flag == 1:
                         resample_flag = True
 
                     if resample_flag: # NOTE: Not a cheap operation since we don't store the costs in the continuations dict
                         for res in history:
                             if Conf(res.config.to_tuple(run.problem.precision), res.fidelity[1]) == config:  # noqa: E501
                                 result = res
-                                break
+                            result = benchmark.query(query)
                     else:
                         result = benchmark.query(query)
                         if continuations:
