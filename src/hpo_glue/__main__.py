@@ -119,7 +119,7 @@ if __name__ == "__main__":
         "--group_by", "-g",
         type=str,
         default=None,
-        choices=["optimizer", "benchmark", "seed", "memory"],
+        choices=["opt", "bench", "opt_bench", "seed", "mem"],
         help="Runs dump group by\n"
         "Only used if exec_type is dump"
     )

@@ -234,7 +234,7 @@ class Study:
 
     def _group_by(
         self,
-        group_by: Literal["optimizer", "benchmark", "seed", "memory"] | None,
+        group_by: Literal["opt", "bench", "opt_bench", "seed", "mem"] | None,
     ) -> Mapping[str, list[Run]]:
         """Group the runs by the specified group."""
         if group_by is None:
@@ -244,13 +244,15 @@ class Study:
         for run in self.experiments:
             key = ""
             match group_by:
-                case "optimizer":
+                case "opt":
                     key = run.optimizer.name
-                case "benchmark":
+                case "bench":
                     key = run.benchmark.name
+                case "opt_bench":
+                    key = f"{run.optimizer.name}_{run.benchmark.name}"
                 case "seed":
                     key = str(run.seed)
-                case "memory":
+                case "mem":
                     key = f"{run.mem_req_MB}MB"
                 case _:
                     raise ValueError(f"Invalid group_by: {group_by}")
@@ -263,7 +265,7 @@ class Study:
 
     def _dump_runs(
         self,
-        group_by: Literal["optimizer", "benchmark", "seed", "memory"] | None,
+        group_by: Literal["opt", "bench", "opt_bench", "seed", "mem"] | None,
         exp_dir: Path,
         *,
         overwrite: bool = False,
@@ -311,7 +313,7 @@ class Study:
         budget: int = 50,
         precision: int | None = None,
         exec_type: Literal["sequential", "parallel", "dump"] = "sequential",
-        group_by: Literal["optimizer", "benchmark", "seed", "memory"] | None = None,
+        group_by: Literal["opt", "bench", "opt_bench", "seed", "mem"] | None = None,
         overwrite: bool = False,
         continuations: bool = False,
     ) -> None:
@@ -340,7 +342,7 @@ class Study:
             Supported types are "sequential", "parallel" and "dump".
 
             group_by: The grouping to use for the runs dump.
-            Supported types are "optimizer", "benchmark", "seed", and "memory"
+            Supported types are "opt", "bench", "opt_bench", "seed", and "mem"
             Only used when `exec_type` is "dump" for multiple runs.
 
         """
