@@ -96,6 +96,7 @@ def plot_results(  # noqa: PLR0915
                 budget_list = results[FIDELITY_COL].values.astype(np.float64)
                 budget_list = np.cumsum(budget_list)
                 budget = budget_list[-1]
+                budget_type = "FidelityBudget"
 
             if results[CONTINUATIONS_COL].iloc[0] is not None:
                 continuations = True
@@ -184,6 +185,7 @@ def plot_results(  # noqa: PLR0915
     plt.xlabel(f"{budget_type}")
     plt.ylabel(f"{objective}")
     plt.title(f"Performance of Optimizers on {benchmarks_name}")
+    plt.xscale("log")
     if len(optimizers) == 1:
         plt.title(f"Performance of {optimizers[0]} on {benchmarks_name}")
     plt.legend()
