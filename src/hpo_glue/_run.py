@@ -58,16 +58,16 @@ class Runtime_hist:
             }
         elif fid_type not in self.configs[config.t]:
             self.configs[config.t][fid_type] = [config.fid]
-        elif config.fid < self.configs[config.t][fid_type][-1]:
-            raise NotImplementedError("Decreasing fidelity not yet implemented!")
-        elif config.fid not in self.configs[config.t][fid_type]:
-            self.configs[config.t][fid_type].append(config.fid)
-        else:
+        elif config.fid in self.configs[config.t][fid_type]:
             warnings.warn(
                 f"Fidelity {config.fid} sampled twice by Optimizer for config {config.t}!",
                 stacklevel=2
             )
             flag = 1
+        elif config.fid < self.configs[config.t][fid_type][-1]:
+            raise NotImplementedError("Decreasing fidelity not yet implemented!")
+        elif config.fid not in self.configs[config.t][fid_type]:
+            self.configs[config.t][fid_type].append(config.fid)
         return flag
 
     def get_continuations_cost(
@@ -173,7 +173,7 @@ def _run_problem_with_trial_budget(  # noqa: C901, PLR0912
                         for res in history:
                             if Conf(res.config.to_tuple(run.problem.precision), res.fidelity[1]) == config:  # noqa: E501
                                 result = res
-                            result = benchmark.query(query)
+                                result.query = query
                     else:
                         result = benchmark.query(query)
                         if continuations:
