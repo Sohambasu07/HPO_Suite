@@ -87,7 +87,7 @@ def plot_results(  # noqa: PLR0915
 
             # Automatically set budget to FidelityBudget if Multifidelity Optimizers are used
             if results[FIDELITY_COL].iloc[0] is not None:
-                budget = "FidelityBudget"
+                budget_type = "FidelityBudget"
             match budget_type:
                 case "FidelityBudget":
                     budget_list = results[FIDELITY_COL].values.astype(np.float64)
@@ -100,7 +100,6 @@ def plot_results(  # noqa: PLR0915
                     raise NotImplementedError(f"Budget type {budget_type} not implemented")
 
             if not pd.isna(results[CONTINUATIONS_COL].iloc[0]):
-                print(results[CONTINUATIONS_COL].iloc[0])
                 continuations = True
                 continuations_list = results[CONTINUATIONS_COL].values.astype(np.float64)
                 continuations_list = np.cumsum(continuations_list)
