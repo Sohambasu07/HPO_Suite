@@ -85,6 +85,8 @@ class Study:
         costs: int = 0,
         multi_objective_generation: Literal["mix_metric_cost", "metric_only"] = "mix_metric_cost",
         on_error: Literal["warn", "raise", "ignore"] = "warn",
+        continuations: bool = False,
+        precision: int | None = None
     ) -> list[Run]:
         """Generate a set of problems for the given optimizer and benchmark.
 
@@ -144,6 +146,7 @@ class Study:
                     fidelities=fidelities,
                     costs=costs,
                     multi_objective_generation=multi_objective_generation,
+                    precision=precision
                 )
                 _problems.append(_problem)
             except ValueError as e:
@@ -159,7 +162,12 @@ class Study:
         _runs_per_problem: list[Run] = []
         for _problem in _problems:
             try:
-                _runs = _problem.generate_runs(optimizers=optimizers, seeds=seeds, expdir=expdir)
+                _runs = _problem.generate_runs(
+                    optimizers=optimizers,
+                    seeds=seeds,
+                    expdir=expdir,
+                    continuations = continuations
+                )
                 _runs_per_problem.extend(_runs)
             except ValueError as e:
                 match on_error:
@@ -333,8 +341,9 @@ class Study:
             overwrite: Whether to overwrite existing results.
 
             continuations: Whether to calculate continuations cost.
+            Note: Only works for Multi-fidelity Optimizers.
 
-            precision: The precision of the optimization.
+            precision: The precision of the optimization run(s).
 
             expdir: The directory to store experiment results.
 
@@ -384,11 +393,20 @@ class Study:
             fidelities=1,
             objectives=1,
             on_error="ignore",
+            precision=precision,
+            continuations=continuations
         )
         for run in self.experiments:
             run.write_yaml()
 
-        if len(_optimizers) > 1 or len(_benchmarks) > 1:
+        _multirun = False
+
+        if (
+            len(_optimizers) > 1 or
+            len(_benchmarks) > 1 or
+            (seeds is not None and len(seeds) > 1) or
+            num_seeds > 1
+        ):
             match exec_type:
                 case "sequential":
                     logger.info("Running experiments sequentially")
@@ -397,8 +415,6 @@ class Study:
                         run.run(
                             overwrite=overwrite,
                             progress_bar=False,
-                            continuations=continuations,
-                            precision=precision
                         )
                 case "parallel":
                     raise NotImplementedError("Parallel execution not implemented yet!")
@@ -418,8 +434,6 @@ class Study:
             run.run(
                 overwrite=overwrite,
                 progress_bar=False,
-                continuations=continuations,
-                precision=precision
             )
 
 

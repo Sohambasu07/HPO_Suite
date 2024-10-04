@@ -173,6 +173,7 @@ class Problem:
         *,
         expdir: Path | str = DEFAULT_RELATIVE_EXP_DIR,
         seeds: Iterable[int],
+        continuations: bool = False
     ) -> list[Run]:
         """Generate a set of problems for the given optimizer and benchmark.
 
@@ -209,16 +210,21 @@ class Problem:
             support: Problem.Support = opt.support
             support.check_opt_support(who=opt.name, problem=self)
 
-        return [
-            Run(
+        _runs_list = []
+        for _seed, (opt, hps) in product(_seeds, _optimizers):
+            if "single" not in opt.support.fidelities:
+                continuations = False
+            _runs_list.append(
+                Run(
                 problem=self,
                 optimizer=opt,
                 optimizer_hyperparameters=hps,
                 seed=_seed,
                 expdir=Path(expdir),
+                continuations=continuations
+                )
             )
-            for _seed, (opt, hps) in product(_seeds, _optimizers)
-        ]
+        return _runs_list
 
     def group_for_optimizer_comparison(
         self,

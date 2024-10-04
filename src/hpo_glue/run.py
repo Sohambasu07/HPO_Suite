@@ -177,8 +177,6 @@ class Run:
         on_error: Literal["raise", "continue"] = "raise",
         overwrite: Run.State | str | Sequence[Run.State | str] | bool = False,
         progress_bar: bool = True,
-        continuations: bool = False,
-        precision: int | None = None,
     ) -> Report:
         """Run the Run.
 
@@ -201,8 +199,6 @@ class Run:
             progress_bar: Whether to show a progress bar.
         """
         from hpo_glue._run import _run
-
-        self.problem.precision = precision
 
         if on_error not in ("raise", "continue"):
             raise ValueError(f"Invalid value for `on_error`: {on_error}")
@@ -228,13 +224,11 @@ class Run:
                 f"{self.df_path}. Set `overwrite=[{state}]` to rerun problems in this state"
             )
         """
-        self.continuations = continuations
         self.set_state(Run.State.PENDING)
         return _run(
             run=self,
             on_error=on_error,
             progress_bar=progress_bar,
-            continuations=continuations,
         )
 
     def create_env(
@@ -430,7 +424,7 @@ class Run:
 
 
     @classmethod
-    def generate(  # noqa: C901, D417, PLR0912
+    def generate(  # noqa: C901, PLR0912, PLR0913
         cls,
         optimizers: (
             type[Optimizer]
@@ -442,13 +436,15 @@ class Run:
         *,
         expdir: Path | str = DEFAULT_RELATIVE_EXP_DIR,
         budget: BudgetType | int,
-        # seeds: Iterable[int],
-        num_seeds: int,
+        seeds: Iterable[int] | None = None,
+        num_seeds: int = 1,
         fidelities: int = 0,
         objectives: int = 1,
         costs: int = 0,
         multi_objective_generation: Literal["mix_metric_cost", "metric_only"] = "mix_metric_cost",
         on_error: Literal["warn", "raise", "ignore"] = "warn",
+        continuations: bool = False,
+        precision: int | None = None
     ) -> list[Run]:
         """Generate a set of problems for the given optimizer and benchmark.
 
@@ -467,6 +463,7 @@ class Run:
                 where when multifidelty is enabled, fractional budget can be used and 1 is
                 equivalent a full fidelity trial.
             seeds: The seed or seeds to use for the problems.
+            num_seeds: The number of seeds to generate. Only used if seeds is None.
             fidelities: The number of fidelities to generate problems for.
             objectives: The number of objectives to generate problems for.
             costs: The number of costs to generate problems for.
@@ -478,7 +475,13 @@ class Run:
                 * "ignore": Ignore the error and continue.
         """
         # Generate seeds
-        seeds = cls.generate_seeds(num_seeds).tolist()
+        match seeds:
+            case None:
+                seeds = cls.generate_seeds(num_seeds).tolist()
+            case Iterable():
+                pass
+            case int():
+                seeds = [seeds]
 
         _benchmarks: list[BenchmarkDescription] = []
         match benchmarks:
@@ -501,6 +504,7 @@ class Run:
                     fidelities=fidelities,
                     costs=costs,
                     multi_objective_generation=multi_objective_generation,
+                    precision=precision
                 )
                 _problems.append(_problem)
             except ValueError as e:
@@ -516,7 +520,12 @@ class Run:
         _runs_per_problem: list[Run] = []
         for _problem in _problems:
             try:
-                _runs = _problem.generate_runs(optimizers=optimizers, seeds=seeds, expdir=expdir)
+                _runs = _problem.generate_runs(
+                    optimizers=optimizers,
+                    seeds=seeds,
+                    expdir=expdir,
+                    continuations = continuations
+                )
                 _runs_per_problem.extend(_runs)
             except ValueError as e:
                 match on_error:

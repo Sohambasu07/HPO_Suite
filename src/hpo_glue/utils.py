@@ -84,21 +84,23 @@ def plot_results(  # noqa: PLR0915
         for seed in report[instance]:
             results = report[instance][seed]["results"]
             cost_list = results[SINGLE_OBJ_COL].values.astype(np.float64)
+
+            # Automatically set budget to FidelityBudget if Multifidelity Optimizers are used
+            if results[FIDELITY_COL].iloc[0] is not None:
+                budget = "FidelityBudget"
             match budget_type:
                 case "FidelityBudget":
-                    raise NotImplementedError("Fidelity budget not implemented")
+                    budget_list = results[FIDELITY_COL].values.astype(np.float64)
+                    budget_list = np.cumsum(budget_list)
+                    budget = budget_list[-1]
+                    budget_type = "FidelityBudget"
                 case "TrialBudget":
                     budget_list = results[BUDGET_USED_COL].values.astype(np.float64)
                 case _:
                     raise NotImplementedError(f"Budget type {budget_type} not implemented")
 
-            if results[FIDELITY_COL].iloc[0] is not None:
-                budget_list = results[FIDELITY_COL].values.astype(np.float64)
-                budget_list = np.cumsum(budget_list)
-                budget = budget_list[-1]
-                budget_type = "FidelityBudget"
-
-            if results[CONTINUATIONS_COL].iloc[0] is not None:
+            if not pd.isna(results[CONTINUATIONS_COL].iloc[0]):
+                print(results[CONTINUATIONS_COL].iloc[0])
                 continuations = True
                 continuations_list = results[CONTINUATIONS_COL].values.astype(np.float64)
                 continuations_list = np.cumsum(continuations_list)
