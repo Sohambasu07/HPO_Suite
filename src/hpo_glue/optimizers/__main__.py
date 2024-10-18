@@ -4,9 +4,9 @@ import argparse
 import logging
 
 from hpo_glue.optimizers import (
+    BB_OPTIMIZERS,
     MF_OPTIMIZERS,
     MO_OPTIMIZERS,
-    NON_MF_OPTIMIZERS,
     OPTIMIZERS,
     SO_OPTIMIZERS,
 )
@@ -23,7 +23,7 @@ def main(
         case "mf":
             logger.info(MF_OPTIMIZERS.keys())
         case "nonmf":
-            logger.info(NON_MF_OPTIMIZERS.keys())
+            logger.info(BB_OPTIMIZERS.keys())
         case "mo":
             logger.info(MO_OPTIMIZERS.keys())
         case "so":

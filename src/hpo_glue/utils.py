@@ -85,6 +85,14 @@ def plot_results(  # noqa: PLR0915
             results = report[instance][seed]["results"]
             cost_list = results[SINGLE_OBJ_COL].values.astype(np.float64)
 
+            # Automatically set budget to TrialBudget if Non-Multifidelity Optimizers are used
+            if (
+                np.all(results[FIDELITY_COL].to_numpy() == results[FIDELITY_COL].iloc[0])
+                or
+                results[FIDELITY_COL].iloc[0] is None
+            ):
+                budget_type = "TrialBudget"
+
             # Automatically set budget to FidelityBudget if Multifidelity Optimizers are used
             if results[FIDELITY_COL].iloc[0] is not None:
                 budget_type = "FidelityBudget"

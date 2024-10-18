@@ -20,7 +20,7 @@ OPTIMIZERS: dict[str, type[Optimizer]] = {
 }
 
 MF_OPTIMIZERS: dict[str, type[Optimizer]] = {}
-NON_MF_OPTIMIZERS: dict[str, type[Optimizer]] = {}
+BB_OPTIMIZERS: dict[str, type[Optimizer]] = {}
 MO_OPTIMIZERS: dict[str, type[Optimizer]] = {}
 SO_OPTIMIZERS: dict[str, type[Optimizer]] = {}
 
@@ -28,7 +28,7 @@ for name, opt in OPTIMIZERS.items():
     if "single" in opt.support.fidelities:
         MF_OPTIMIZERS[name] = opt
     else:
-        NON_MF_OPTIMIZERS[name] = opt
+        BB_OPTIMIZERS[name] = opt
     if "many" in opt.support.objectives:
         MO_OPTIMIZERS[name] = opt
     if "single" in opt.support.objectives:
@@ -36,7 +36,7 @@ for name, opt in OPTIMIZERS.items():
 __all__ = [
     "OPTIMIZERS",
     "MF_OPTIMIZERS",
-    "NON_MF_OPTIMIZERS",
+    "BB_OPTIMIZERS",
     "MO_OPTIMIZERS",
     "SO_OPTIMIZERS",
 ]
