@@ -1,15 +1,13 @@
 [project]
-name = "hpo_suite"
+name = "hpo_glue"
 version = "0.1.0"
 requires-python = ">=3.10"
 dependencies = [
-  "pandas>=2,<3", 
-  "matplotlib>=3,<4", 
+  "pandas>=2,<3",
   "tqdm", 
   "more_itertools",
   "pyyaml",
-  "ConfigSpace",
-  "hpo_glue @ file:///home/soham/repos/HPOSuite_restructuring/HPO_Suite/hpo_suite?editable=true"
+  "ConfigSpace"
   ]
 authors = [
   { name = "Soham Basu", email = "soham.basu07@gmail.com" },
@@ -36,22 +34,15 @@ license = { file = "LICENSE" }
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["hpo_suite"]
-exclude = ["configs", "examples", "tests", "scripts"]
+include = ["hpo_glue"]
+exclude = ["benchmarks", "optimizers", "plotting"]
 namespaces = false
 
 [project.optional-dependencies]
 dev = ["ruff", "mypy", "pre-commit"]
-optuna = ["optuna"]
-yahpo-gym = ["yahpo-gym"]
-smac = ["smac"]
-dehb = ["dehb"]
-syne-tune = ["syne-tune[basic]", "syne-tune[gpsearchers]"]     # TODO(eddiebergman): Do we need more here?
-mfpbench_main = ["mf-prior-bench"]
-pymoo = ["pymoo"]
 
 [project.urls]
-source = "https://github.com/Sohambasu07/HPO_Suite/"
+source = "https://github.com/Sohambasu07/HPO_Suite/hpo_suite/hpo_glue/"
 
 [tool.ruff]
 target-version = "py310"
@@ -161,44 +152,16 @@ exclude = [
   "node_modules",
   "venv",
   "docs",
-  "configs"
 ]
 
 # Exclude a variety of commonly ignored directories.
 [tool.ruff.lint.per-file-ignores]
-"tests/*.py" = [
-  "S101",
-  "D101",
-  "D102",
-  "D103",
-  "ANN001",
-  "ANN201",
-  "FBT001",
-  "D100",
-  "PLR2004",
-  "PD901",   #  X is a bad variable name. (pandas)
-  "TCH",
-  "N803",
-  "C901",    # Too complex
-]
 "__init__.py" = ["I002"]
-"examples/*" = [
-  "INP001",
-  "I002",
-  "E741",
-  "D101",
-  "D103",
-  "T20",
-  "D415",
-  "ERA001",
-  "E402",
-  "E501",
-]
 "docs/*" = ["INP001"]
 
 
 [tool.ruff.lint.isort]
-known-first-party = ["hpo_suite"]
+known-first-party = ["hpo_glue"]
 no-lines-before = ["future"]
 required-imports = ["from __future__ import annotations"]
 combine-as-imports = true
@@ -213,7 +176,7 @@ max-args = 10 # Changed from default of 5
 
 [tool.mypy]
 python_version = "3.10"
-packages = ["hpo_suite", "tests"]
+packages = ["hpo_glue"]
 
 show_error_codes = true
 
@@ -233,7 +196,6 @@ warn_return_any = true
 
 
 [[tool.mypy.overrides]]
-module = ["tests.*"]
 disallow_untyped_defs = false          # Sometimes we just want to ignore verbose types
 disallow_untyped_decorators = false    # Test decorators are not properly typed
 disallow_incomplete_defs = false       # Sometimes we just want to ignore verbose types

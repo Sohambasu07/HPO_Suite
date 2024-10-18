@@ -1,4 +1,4 @@
-"Interfacing benchmarks from the Pymoo library"
+"""Interfacing benchmarks from the Pymoo library."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-import pymoo.problems
 from ConfigSpace import ConfigurationSpace, Float
 
 from hpo_glue.benchmark import BenchmarkDescription, SurrogateBenchmark

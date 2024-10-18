@@ -10,14 +10,14 @@ from typing import TYPE_CHECKING, Any, Literal, TypeAlias
 import numpy as np
 
 from hpo_glue.benchmark import BenchmarkDescription
-from hpo_glue.benchmarks import BENCHMARKS
 from hpo_glue.constants import DEFAULT_RELATIVE_EXP_DIR
 from hpo_glue.env import (
     GLUE_PYPI,
     get_current_installed_hpo_glue_version,
 )
 from hpo_glue.optimizer import Optimizer
-from hpo_glue.optimizers import OPTIMIZERS
+from hpo_suite.benchmarks import BENCHMARKS
+from hpo_suite.optimizers import OPTIMIZERS
 
 if TYPE_CHECKING:
     from hpo_glue.budget import BudgetType
@@ -392,7 +392,7 @@ class Study:
             num_seeds=num_seeds,
             fidelities=1,
             objectives=1,
-            on_error="ignore",
+            on_error="warn",
             precision=precision,
             continuations=continuations
         )

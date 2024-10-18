@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from hpo_glue.benchmarks.mfp_bench import mfpbench_benchmarks
-from hpo_glue.benchmarks.pymoo import pymoo_benchmarks
+from hpo_suite.benchmarks.mfp_bench import mfpbench_benchmarks
+from hpo_suite.benchmarks.pymoo import pymoo_benchmarks
 
 if TYPE_CHECKING:
     from hpo_glue.benchmark import BenchmarkDescription

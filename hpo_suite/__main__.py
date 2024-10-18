@@ -5,7 +5,7 @@ from pathlib import Path
 
 import yaml
 
-from hpo_glue.study import create_study
+from hpo_suite.study import create_study
 
 
 def glue_study(  # noqa: D103, PLR0913

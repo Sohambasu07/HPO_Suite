@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from hpo_glue.optimizers.dehb import DEHB_Optimizer
-from hpo_glue.optimizers.optuna import OptunaOptimizer
-from hpo_glue.optimizers.smac import SMAC_BO, SMAC_Hyperband
-from hpo_glue.optimizers.synetune import SyneTuneBO, SyneTuneBOHB
+from hpo_suite.optimizers.dehb import DEHB_Optimizer
+from hpo_suite.optimizers.optuna import OptunaOptimizer
+from hpo_suite.optimizers.smac import SMAC_BO, SMAC_Hyperband
+from hpo_suite.optimizers.synetune import SyneTuneBO, SyneTuneBOHB
 
 if TYPE_CHECKING:
     from hpo_glue.optimizer import Optimizer
