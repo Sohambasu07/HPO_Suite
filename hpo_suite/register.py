@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from hpo_glue.benchmark import BenchmarkDescription
 from hpo_glue.optimizer import Optimizer
+
 from hpo_suite.benchmarks import BENCHMARKS
 from hpo_suite.optimizers import OPTIMIZERS
 
