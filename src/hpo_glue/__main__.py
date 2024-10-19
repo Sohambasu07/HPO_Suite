@@ -22,6 +22,7 @@ def glue_study(  # noqa: D103, PLR0913
     precision: int,
     overwrite: bool,
     continuations: bool,
+    on_error: str,
 ):
     study = create_study(
         output_dir=output_dir,
@@ -38,6 +39,7 @@ def glue_study(  # noqa: D103, PLR0913
         continuations=continuations,
         exec_type=exec_type,
         group_by=group_by,
+        on_error=on_error,
     )
 
 def _get_from_yaml_config(config_path: Path) -> dict:
@@ -123,6 +125,13 @@ if __name__ == "__main__":
         help="Runs dump group by\n"
         "Only used if exec_type is dump"
     )
+    parser.add_argument(
+        "--on_error", "-oe",
+        type=str,
+        default="warn",
+        choices=["warn", "raise", "ignore"],
+        help="Action to take on error",
+    )
     args = parser.parse_args()
 
     if args.exp_config:
@@ -140,6 +149,7 @@ if __name__ == "__main__":
             continuations=config.get("continuations", False),
             exec_type=config.get("exec_type", "dump"),
             group_by=config.get("group_by"),
+            on_error=config.get("on_error", "warn"),
         )
     else:
         glue_study(
@@ -155,5 +165,6 @@ if __name__ == "__main__":
             continuations=args.continuations,
             exec_type=args.exec_type,
             group_by=args.group_by,
+            on_error=args.on_error,
         )
 

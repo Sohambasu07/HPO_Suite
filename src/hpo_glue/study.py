@@ -324,6 +324,7 @@ class Study:
         group_by: Literal["opt", "bench", "opt_bench", "seed", "mem"] | None = None,
         overwrite: bool = False,
         continuations: bool = False,
+        on_error: Literal["warn", "raise", "ignore"] = "warn",
     ) -> None:
         """Execute multiple atomic runs using a list of Optimizers and a list of Benchmarks.
 
@@ -392,7 +393,7 @@ class Study:
             num_seeds=num_seeds,
             fidelities=1,
             objectives=1,
-            on_error="ignore",
+            on_error=on_error,
             precision=precision,
             continuations=continuations
         )
