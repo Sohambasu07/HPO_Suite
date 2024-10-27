@@ -151,6 +151,16 @@ def _download_data_cmd(key: str, datadir: Path | None = None) -> tuple[str, ...]
 
 
 def lcbench_surrogate(datadir: Path | None = None) -> Iterator[BenchmarkDescription]:
+    """Generates benchmark descriptions for the LCBench surrogate Benchmark.
+
+    Args:
+        datadir (Path | None): The directory where the data is stored.
+        If None, the default directory is used.
+
+    Yields:
+        Iterator[BenchmarkDescription]: An iterator over BenchmarkDescription objects
+        for each task in the LCBench surrogate Benchmark.
+    """
     env = Env(
         name="py310-mfpbench-1.9-yahpo",
         requirements=("mf-prior-bench[yahpo]==1.9.0",),
@@ -176,10 +186,21 @@ def lcbench_surrogate(datadir: Path | None = None) -> Iterator[BenchmarkDescript
                 "epoch": RangeFidelity.from_tuple((1, 52, 1), supports_continuation=True),
             },
             env=env,
+            mem_req_MB=4096,
         )
 
 
 def lcbench_tabular(datadir: Path | None = None) -> Iterator[BenchmarkDescription]:
+    """Generates benchmark descriptions for the LCBench tabular Benchmark.
+
+    Args:
+        datadir (Path | None): The directory where the data is stored.
+        If None, the default directory is used.
+
+    Yields:
+        Iterator[BenchmarkDescription]: An iterator over BenchmarkDescription objects
+        for each task in the LCBench tabular Benchmark.
+    """
     task_ids = (
         "adult",
         "airlines",
@@ -245,10 +266,21 @@ def lcbench_tabular(datadir: Path | None = None) -> Iterator[BenchmarkDescriptio
                 "test_cross_entropy": Measure.test_metric(bounds=(0, np.inf), minimize=True),
             },
             env=env,
+            mem_req_MB=4096,
         )
 
 
 def mfh(datadir: Path | None = None) -> Iterator[BenchmarkDescription]:
+    """Generates benchmark descriptions for the MF-Hartmann Benchmarks.
+
+    Args:
+        datadir (Path | None): The directory where the data is stored.
+        If None, the default directory is used.
+
+    Yields:
+        Iterator[BenchmarkDescription]: An iterator over BenchmarkDescription objects
+        for each combination of correlation and dimensions in the MFH Benchmarks.
+    """
     env = Env(
         name="py310-mfpbench-1.9-mfh",
         python_version="3.10",
@@ -274,10 +306,21 @@ def mfh(datadir: Path | None = None) -> Iterator[BenchmarkDescription]:
                 has_conditionals=False,
                 is_tabular=False,
                 env=env,
+                mem_req_MB = 1024,
             )
 
 
 def jahs(datadir: Path | None = None) -> Iterator[BenchmarkDescription]:
+    """Generates benchmark descriptions for the JAHSBench Benchmark.
+
+    Args:
+        datadir (Path | None): The directory where the data is stored.
+        If None, the default directory is used.
+
+    Yields:
+        Iterator[BenchmarkDescription]: An iterator over BenchmarkDescription objects
+        for each task in JAHSBench.
+    """
     task_ids = ("CIFAR10", "ColorectalHistology", "FashionMNIST")
     env = Env(
         name="py310-mfpbench-1.9-jahs",
@@ -310,10 +353,21 @@ def jahs(datadir: Path | None = None) -> Iterator[BenchmarkDescription]:
             has_conditionals=False,
             is_tabular=False,
             env=env,
+            mem_req_MB=12288,
         )
 
 
 def pd1(datadir: Path | None = None) -> Iterator[BenchmarkDescription]:
+    """Generates benchmark descriptions for the PD1 Benchmarks.
+
+    Args:
+        datadir (Path | None): The directory where the data is stored.
+        If None, the default directory is used.
+
+    Yields:
+        Iterator[BenchmarkDescription]: An iterator over BenchmarkDescription objects
+        for each PD1 benchmark.
+    """
     env = Env(
         name="py310-mfpbench-1.9-pd1",
         python_version="3.10",
@@ -332,6 +386,7 @@ def pd1(datadir: Path | None = None) -> Iterator[BenchmarkDescription]:
         is_tabular=False,
         has_conditionals=False,
         env=env,
+        mem_req_MB=12288,
     )
     yield BenchmarkDescription(
         name="pd1-imagenet-resnet-512",
@@ -345,6 +400,7 @@ def pd1(datadir: Path | None = None) -> Iterator[BenchmarkDescription]:
         is_tabular=False,
         has_conditionals=False,
         env=env,
+        mem_req_MB=12288,
     )
     yield BenchmarkDescription(
         name="pd1-lm1b-transformer-2048",
@@ -358,6 +414,7 @@ def pd1(datadir: Path | None = None) -> Iterator[BenchmarkDescription]:
         is_tabular=False,
         has_conditionals=False,
         env=env,
+        mem_req_MB=24576,
     )
     yield BenchmarkDescription(
         name="pd1-translate_wmt-xformer_translate-64",
@@ -371,11 +428,23 @@ def pd1(datadir: Path | None = None) -> Iterator[BenchmarkDescription]:
         is_tabular=False,
         has_conditionals=False,
         env=env,
+        mem_req_MB=24576,
     )
 
 
 def mfpbench_benchmarks(datadir: Path | None = None) -> Iterator[BenchmarkDescription]:
+    """Generates benchmark descriptions for various MF-Prior-Bench.
+
+    Args:
+        datadir (Path | None): The directory where the data is stored.
+        If None, the default directory is used.
+
+    Yields:
+        Iterator[BenchmarkDescription]: An iterator over BenchmarkDescription objects
+        for each benchmark.
+    """
     yield from lcbench_surrogate(datadir)
     yield from lcbench_tabular(datadir)
     yield from mfh(datadir)
     yield from jahs(datadir)
+    yield from pd1(datadir)

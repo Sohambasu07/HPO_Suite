@@ -5,7 +5,7 @@ new_env/
 SMAC/
 Optimizers_cache/
 build/**
-hpo-glue-output/**
+hpo-glue-output/
 .mypy_cache
 .ruff_cache
 data

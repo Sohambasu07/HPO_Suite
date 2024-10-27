@@ -122,7 +122,7 @@ class SMAC_Optimizer(Optimizer):
 class SMAC_BO(SMAC_Optimizer):
     """SMAC Bayesian Optimization."""
 
-    name = "SMAC_BO_2.1"
+    name = "SMAC_BO"
 
     support = Problem.Support(
         fidelities=(None,),
@@ -130,6 +130,8 @@ class SMAC_BO(SMAC_Optimizer):
         cost_awareness=(None,),
         tabular=False,
     )
+
+    mem_req_MB = 1024
 
     def __init__(
         self,
@@ -215,13 +217,14 @@ class SMAC_BO(SMAC_Optimizer):
 class SMAC_Hyperband(SMAC_Optimizer):
     """SMAC Hyperband."""
 
-    name = "SMAC_BO_2.1"
+    name = "SMAC_Hyperband"
     support = Problem.Support(
         fidelities=("single",),
         objectives=("single", "many"),
         cost_awareness=(None,),
         tabular=False,
     )
+    mem_req_MB = 1024
 
     def __init__(
         self,

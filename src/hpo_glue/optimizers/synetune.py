@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import ConfigSpace as CS  # noqa: N817
 
+from hpo_glue.env import Env
 from hpo_glue.config import Config
 from hpo_glue.optimizer import Optimizer
 from hpo_glue.problem import Problem
@@ -27,7 +28,13 @@ if TYPE_CHECKING:
 class SyneTuneOptimizer(Optimizer):
     """Base class for SyneTune Optimizers."""
 
-    name = "SyneTune-base"
+    name = "SyneTune_base"
+
+    env = Env(
+        name="syne_tune-0.13.0",
+        python_version="3.10.12",
+        requirements=("syne_tune==0.13.0",),
+    )
 
     @abstractmethod
     def __init__(
@@ -59,10 +66,14 @@ class SyneTuneOptimizer(Optimizer):
             creation_time=datetime.datetime.now(),
         )
 
+        fidelity = None
+        if isinstance(self.problem.fidelity, tuple):
+            fidelity = trial_suggestion.config.pop(self.problem.fidelity[0])
+
         # TODO: How to get the fidelity??
         return Query(
             config=Config(config_id=name, values=trial.config),
-            fidelity=None,
+            fidelity=fidelity,
             optimizer_info=trial,
         )
 
@@ -89,7 +100,7 @@ class SyneTuneOptimizer(Optimizer):
 class SyneTuneBO(SyneTuneOptimizer):
     """SyneTune Bayesian Optimization."""
 
-    name = "SyneTune-BO"
+    name = "SyneTune_BO"
     support = Problem.Support(
         fidelities=(None,),
         objectives=("single",),
@@ -122,7 +133,8 @@ class SyneTuneBO(SyneTuneOptimizer):
                 pass
             case tuple():
                 clsname = self.__class__.__name__
-                raise ValueError(f"{clsname} does not multi-fidelity spaces")
+                # raise ValueError(f"{clsname} does not multi-fidelity spaces")
+                pass
             case Mapping():
                 clsname = self.__class__.__name__
                 raise NotImplementedError(f"{clsname} does not support many-fidelity")
@@ -160,6 +172,9 @@ class SyneTuneBO(SyneTuneOptimizer):
             case _:
                 raise TypeError("config_space must be of type ConfigSpace.ConfigurationSpace")
 
+        if isinstance(problem.fidelity, tuple):
+            synetune_cs[problem.fidelity[0]] = problem.fidelity[1]  # TODO: Check this
+
         super().__init__(
             problem=problem,
             seed=seed,
@@ -171,6 +186,102 @@ class SyneTuneBO(SyneTuneOptimizer):
                 random_seed=seed,
                 **kwargs,
             ),
+        )
+
+
+class SyneTuneBOHB(SyneTuneOptimizer):
+    """SyneTune BOHB."""
+
+    name = "SyneTune_BOHB"
+    support = Problem.Support(
+        fidelities=(None, "single"),
+        objectives=("single",),
+        cost_awareness=(None,),
+        tabular=False,
+    )
+
+    def __init__(
+        self,
+        *,
+        problem: Problem,
+        seed: int,
+        working_directory: Path,
+        config_space: CS.ConfigurationSpace | list[Config],
+        **kwargs: Any,
+    ):
+        """Create a SyneTune BOHB instance for a given problem statement.
+
+        Args:
+            problem: The problem statement.
+            seed: The random seed.
+            working_directory: The working directory to store the results.
+            config_space: The configuration space.
+            **kwargs: Additional arguments for the BayesianOptimization.
+        """
+        from syne_tune.optimizer.baselines import BOHB
+
+        match problem.fidelity:
+            case None:
+                min_fidelity = None
+                max_fidelity = None
+            case (_, fidelity):
+                min_fidelity = fidelity.min
+                max_fidelity = fidelity.max
+            case Mapping():
+                clsname = self.__class__.__name__
+                raise NotImplementedError(f"{clsname} does not support many-fidelity")
+            case _:
+                raise TypeError("fidelity_space must be a list, dict or None")
+
+        match problem.cost:
+            case None:
+                pass
+            case tuple() | Mapping():
+                clsname = self.__class__.__name__
+                raise ValueError(f"{clsname} does not support cost-awareness")
+            case _:
+                raise TypeError("cost_awareness must be a list, dict or None")
+
+        metric_name: str
+        mode: Literal["min", "max"]
+        match problem.objective:
+            case (name, metric):
+                metric_name = name
+                mode = "min" if metric.minimize else "max"
+            case Mapping():
+                raise NotImplementedError(
+                    "# TODO: Multiobjective not yet implemented for SyneTuneBO!"
+                )
+            case _:
+                raise TypeError("Objective must be a string or a list of strings")
+
+        synetune_cs: dict[str, Domain]
+        match config_space:
+            case CS.ConfigurationSpace():
+                synetune_cs = configspace_to_synetune_configspace(config_space)
+            case list():
+                raise ValueError("SyneTuneBO does not support tabular benchmarks")
+            case _:
+                raise TypeError("config_space must be of type ConfigSpace.ConfigurationSpace")
+            
+        if isinstance(problem.fidelity, tuple):
+            synetune_cs[problem.fidelity[0]] = problem.fidelity[1]  # TODO: Check this
+
+        super().__init__(
+            problem=problem,
+            seed=seed,
+            working_directory=working_directory,
+            optimizer=BOHB(
+            config_space=self.synetune_cs,
+            mode = mode,
+            metric = metric_name,
+            random_seed = seed,
+            type="stopping",
+            max_t = problem.fidelity[1].max,
+            resource_attr = problem.fidelity[0],
+            grace_period=1,
+            eta=3,
+            )
         )
 
 

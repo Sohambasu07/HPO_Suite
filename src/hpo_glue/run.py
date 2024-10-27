@@ -41,6 +41,8 @@ T = TypeVar("T", bound=Hashable)
 
 logger = logging.getLogger(__name__)
 
+GLOBAL_SEED = 42
+
 
 def _try_delete_if_exists(path: Path) -> None:
     if path.exists():
@@ -113,6 +115,14 @@ class Run:
     env_path: Path = field(init=False)
     """The path to the environment for the run."""
 
+    continuations: bool = field(default=False)
+    """Whether to use continuations for the run."""
+
+    mem_req_MB: int = field(init=False)
+    """The memory requirement for the run in MB.
+    Calculated as the sum of the memory requirements of the optimizer and the benchmark.
+    """
+
     def __post_init__(self) -> None:
         name_parts: list[str] = [
             self.problem.name,
@@ -149,8 +159,9 @@ class Run:
         self.requirements_ran_with_file = self.working_dir / "requirements_ran_with.txt"
         self.env_description_file = self.working_dir / "env.yaml"
         self.post_install_steps = self.working_dir / "venv_post_install.sh"
-        self.run_yaml_path = self.working_dir / "run.yaml"
+        self.run_yaml_path = self.working_dir / "run_config.yaml"
         self.env_path = self.expdir / "envs" / self.env.identifier
+        self.mem_req_MB = self.problem.mem_req_MB + self.optimizer.mem_req_MB
 
     @property
     def venv(self) -> Venv:
@@ -166,8 +177,6 @@ class Run:
         on_error: Literal["raise", "continue"] = "raise",
         overwrite: Run.State | str | Sequence[Run.State | str] | bool = False,
         progress_bar: bool = True,
-        continuations: bool = False,
-        precision: int | None = None,
     ) -> Report:
         """Run the Run.
 
@@ -190,8 +199,6 @@ class Run:
             progress_bar: Whether to show a progress bar.
         """
         from hpo_glue._run import _run
-
-        self.problem.precision = precision
 
         if on_error not in ("raise", "continue"):
             raise ValueError(f"Invalid value for `on_error`: {on_error}")
@@ -217,14 +224,11 @@ class Run:
                 f"{self.df_path}. Set `overwrite=[{state}]` to rerun problems in this state"
             )
         """
-
         self.set_state(Run.State.PENDING)
         return _run(
-            run=self, 
-            on_error=on_error, 
+            run=self,
+            on_error=on_error,
             progress_bar=progress_bar,
-            continuations=continuations,
-            # precision=precision
         )
 
     def create_env(
@@ -408,8 +412,19 @@ class Run:
             case _:
                 raise ValueError(f"Unknown state {state}")
 
+
     @classmethod
-    def generate(  # noqa: PLR0913
+    def generate_seeds(
+        cls,
+        num_seeds: int,
+    ):
+        """Generate a set of seeds using a Global Seed."""
+        cls._rng = np.random.default_rng(GLOBAL_SEED)
+        return cls._rng.integers(0, 2 ** 30 - 1, size=num_seeds)
+
+
+    @classmethod
+    def generate(  # noqa: C901, PLR0912, PLR0913
         cls,
         optimizers: (
             type[Optimizer]
@@ -421,12 +436,15 @@ class Run:
         *,
         expdir: Path | str = DEFAULT_RELATIVE_EXP_DIR,
         budget: BudgetType | int,
-        seeds: Iterable[int],
+        seeds: Iterable[int] | None = None,
+        num_seeds: int = 1,
         fidelities: int = 0,
         objectives: int = 1,
         costs: int = 0,
         multi_objective_generation: Literal["mix_metric_cost", "metric_only"] = "mix_metric_cost",
         on_error: Literal["warn", "raise", "ignore"] = "warn",
+        continuations: bool = False,
+        precision: int | None = None
     ) -> list[Run]:
         """Generate a set of problems for the given optimizer and benchmark.
 
@@ -445,6 +463,7 @@ class Run:
                 where when multifidelty is enabled, fractional budget can be used and 1 is
                 equivalent a full fidelity trial.
             seeds: The seed or seeds to use for the problems.
+            num_seeds: The number of seeds to generate. Only used if seeds is None.
             fidelities: The number of fidelities to generate problems for.
             objectives: The number of objectives to generate problems for.
             costs: The number of costs to generate problems for.
@@ -455,6 +474,15 @@ class Run:
                 * "raise": Raise an error.
                 * "ignore": Ignore the error and continue.
         """
+        # Generate seeds
+        match seeds:
+            case None:
+                seeds = cls.generate_seeds(num_seeds).tolist()
+            case Iterable():
+                pass
+            case int():
+                seeds = [seeds]
+
         _benchmarks: list[BenchmarkDescription] = []
         match benchmarks:
             case BenchmarkDescription():
@@ -476,6 +504,7 @@ class Run:
                     fidelities=fidelities,
                     costs=costs,
                     multi_objective_generation=multi_objective_generation,
+                    precision=precision
                 )
                 _problems.append(_problem)
             except ValueError as e:
@@ -491,7 +520,12 @@ class Run:
         _runs_per_problem: list[Run] = []
         for _problem in _problems:
             try:
-                _runs = _problem.generate_runs(optimizers=optimizers, seeds=seeds, expdir=expdir)
+                _runs = _problem.generate_runs(
+                    optimizers=optimizers,
+                    seeds=seeds,
+                    expdir=expdir,
+                    continuations = continuations
+                )
                 _runs_per_problem.extend(_runs)
             except ValueError as e:
                 match on_error:
@@ -538,6 +572,7 @@ class Run:
 
         run: Run
         results: list[Result]
+        tuple_configs_dict: dict[tuple, dict[str, list[int | float]]] = field(default_factory=dict)
 
         problem: Problem = field(init=False)
 
@@ -605,6 +640,8 @@ class Run:
                     case Mapping():
                         for i, name in enumerate(problem.cost, start=1):
                             _rparts[f"result.fidelity.{i}.value"] = _r.values[name]
+
+                _rparts["result.continuations_cost.1"] = _r.continuations_cost
 
                 return _rparts
 

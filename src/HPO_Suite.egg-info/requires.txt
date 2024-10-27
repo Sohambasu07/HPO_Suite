@@ -18,6 +18,7 @@ smac
 
 [syne-tune]
 syne-tune[basic]
+syne-tune[gpsearchers]
 
 [yahpo-gym]
 yahpo-gym

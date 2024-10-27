@@ -11,7 +11,7 @@ dependencies = [
   "ConfigSpace"
   ]
 authors = [
-  { name = "Soham Basu", email = "Soham.Basu07@gmail.com" },
+  { name = "Soham Basu", email = "soham.basu07@gmail.com" },
   { name = "Eddie Bergman", email = "eddiebergmanhs@gmail.com" },
   { name = "Neeratyoy Malik", email = "neeratyoy@gmail.com" },
 ]
@@ -38,7 +38,10 @@ dev = ["ruff", "mypy", "pre-commit"]
 optuna = ["optuna"]
 yahpo-gym = ["yahpo-gym"]
 smac = ["smac"]
-syne-tune = ["syne-tune[basic]"]     # TODO(eddiebergman): Do we need more here?
+dehb = ["dehb"]
+syne-tune = ["syne-tune[basic]", "syne-tune[gpsearchers]"]     # TODO(eddiebergman): Do we need more here?
+mfpbench_main = ["mf-prior-bench"]
+pymoo = ["pymoo"]
 
 [project.urls]
 source = "https://github.com/Sohambasu07/HPO_Suite/"

@@ -96,7 +96,10 @@ class Problem:
 
     precision: int = field(default=12) #TODO: Set default
 
+    mem_req_MB: int = field(init=False)
+
     def __post_init__(self) -> None:
+        self.mem_req_MB = self.benchmark.mem_req_MB
         self.is_tabular = self.benchmark.is_tabular
         self.is_manyfidelity: bool
         self.is_multifidelity: bool
@@ -111,13 +114,13 @@ class Problem:
         match self.objective:
             case tuple():
                 self.is_multiobjective = False
-                name_parts.append(f"objective={self.objective[0]}")
+                # name_parts.append(f"objective={self.objective[0]}")
             case Mapping():
                 if len(self.objective) == 1:
                     raise ValueError("Single objective should be a tuple, not a mapping")
 
                 self.is_multiobjective = True
-                name_parts.append("objective=" + ",".join(self.objective.keys()))
+                # name_parts.append("objective=" + ",".join(self.objective.keys()))
             case _:
                 raise TypeError("Objective must be a tuple (name, measure) or a mapping")
 
@@ -133,7 +136,7 @@ class Problem:
                     self.supports_trajectory = True
                 else:
                     self.supports_trajectory = False
-                name_parts.append(f"fidelity={_name}")
+                # name_parts.append(f"fidelity={_name}")
             case Mapping():
                 if len(self.fidelity) == 1:
                     raise ValueError("Single fidelity should be a tuple, not a mapping")
@@ -141,7 +144,7 @@ class Problem:
                 self.is_multifidelity = False
                 self.is_manyfidelity = True
                 self.supports_trajectory = False
-                name_parts.append("fidelity=" + ",".join(self.fidelity.keys()))
+                # name_parts.append("fidelity=" + ",".join(self.fidelity.keys()))
             case _:
                 raise TypeError("Fidelity must be a tuple (name, fidelity) or a mapping")
 
@@ -149,12 +152,13 @@ class Problem:
             case None:
                 pass
             case (_name, _measure):
-                name_parts.append(f"cost={_name}")
+                # name_parts.append(f"cost={_name}")
+                pass
             case Mapping():
                 if len(self.cost) == 1:
                     raise ValueError("Single cost should be a tuple, not a mapping")
 
-                name_parts.append("cost=" + ",".join(self.cost.keys()))
+                # name_parts.append("cost=" + ",".join(self.cost.keys()))
 
         self.name = ".".join(name_parts)
 
@@ -169,6 +173,7 @@ class Problem:
         *,
         expdir: Path | str = DEFAULT_RELATIVE_EXP_DIR,
         seeds: Iterable[int],
+        continuations: bool = False
     ) -> list[Run]:
         """Generate a set of problems for the given optimizer and benchmark.
 
@@ -188,7 +193,9 @@ class Problem:
         """
         from hpo_glue.run import Run
 
-        _seeds = list(seeds)
+        _seeds = seeds
+        # if not isinstance(seeds, Iterable):
+        #     _seeds = [seeds]
         _optimizers: list[OptWithHps]
         match optimizers:
             case tuple():
@@ -203,16 +210,21 @@ class Problem:
             support: Problem.Support = opt.support
             support.check_opt_support(who=opt.name, problem=self)
 
-        return [
-            Run(
+        _runs_list = []
+        for _seed, (opt, hps) in product(_seeds, _optimizers):
+            if "single" not in opt.support.fidelities:
+                continuations = False
+            _runs_list.append(
+                Run(
                 problem=self,
                 optimizer=opt,
                 optimizer_hyperparameters=hps,
                 seed=_seed,
                 expdir=Path(expdir),
+                continuations=continuations
+                )
             )
-            for _seed, (opt, hps) in product(_seeds, _optimizers)
-        ]
+        return _runs_list
 
     def group_for_optimizer_comparison(
         self,

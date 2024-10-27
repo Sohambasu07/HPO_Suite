@@ -28,7 +28,8 @@ class Result:
     values: dict[str, Any]
     """Everything returned by the benchmark for a given query at the fideltiy."""
 
-    values_prec: dict[tuple, dict[str, list[int | float]]]
+    continuations_cost: float = np.nan
+    """The coninuations cost if run.continuations set to True."""
 
     budget_cost: float = np.nan
     """The amount of budget used to generate this result."""

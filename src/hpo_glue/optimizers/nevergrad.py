@@ -26,6 +26,15 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+opt_list = sorted(ng.optimizers.registry.keys())
+ext_opts = {
+    "Hyperopt": ng.optimization.optimizerlib.NGOpt13,
+    "CMA-ES": ng.optimization.optimizerlib.ParametrizedCMA,
+    "bayes_opt": ng.optimization.optimizerlib.ParametrizedBO,
+    "DE": ng.families.DifferentialEvolution,
+    "EvolutionStrategy": ng.families.EvolutionStrategy,
+}
+
 
 class NevergradOptimizer(Optimizer):
     """The Nevergrad Optimizer.
@@ -60,54 +69,63 @@ class NevergradOptimizer(Optimizer):
                 raise NotImplementedError("# TODO: Tabular not yet implemented for Nevergrad!")
             case _:
                 raise TypeError("Config space must be a list or a ConfigurationSpace!")
+            
+        self.problem = problem
+        self.working_directory = working_directory
+            
+        optimizer_name = kwargs.get("optimizer", "NGOpt10")
+        if kwargs["optimizer"] not in ext_opts or kwargs["optimizer"] not in opt_list:
+            raise ValueError(f"Unknown optimizer: {kwargs['optimizer']}")
 
         self.optimizer: NGOptimizer | ConfNGOptimizer
         match problem.objective:
             case (_, objective):
-                self.optimizer = optuna.create_study(
-                    sampler=TPESampler(seed=seed, **kwargs),
-                    storage=None,
-                    pruner=None,  # TODO(eddiebergman): Figure out how to use this for MF
-                    study_name=f"{problem.name}-{seed}",
-                    load_if_exists=False,
-                    direction="minimize" if objective.minimize else "maximize",
-                )
+                if optimizer_name in ext_opts:
+                    if optimizer_name == "Hyperopt":
+                        ng_opt = ext_opts["Hyperopt"]
+                    else:
+                        ng_opt = ext_opts[optimizer_name]()
+                    ng_opt = ng_opt(
+                        parametrization=self._parametrization,
+                        budget=self.problem.budget, # TODO: Check this
+                        num_workers=1,
+                    )
+                else:
+                    ng_opt = opt_list[optimizer_name](
+                        parametrization=self._parametrization,
+                        budget=self.problem.budget, # TODO: Check this
+                        num_workers=1,
+                    )
             case Mapping():
-                self.optimizer = optuna.create_study(
-                    sampler=NSGAIISampler(seed=seed, **kwargs),
-                    storage=None,
-                    pruner=None,  # TODO(eddiebergman): Figure out how to use this for MF
-                    study_name=f"{problem.name}-{seed}",
-                    load_if_exists=False,
-                    directions=[
-                        "minimize" if obj.minimize else "maximize"
-                        for obj in problem.objective.values()
-                    ],
-                )
+                raise NotImplementedError("# TODO: Multi-objective not yet implemented for Nevergrad!")
             case _:
                 raise ValueError("Objective must be a string or a list of strings!")
 
-        self.problem = problem
-        self.working_directory = working_directory
-        self._trial_lookup: dict[str, optuna.trial.Trial] = {}
+        self.history: dict[str, tuple[ng.p.Parameter, float | list[float] | None]] = {}
+        self.counter = 0
 
     @override
     def ask(self) -> Query:
         match self.problem.fidelity:
             case None:
-                trial = self.optimizer.ask(self._distributions)
-                name = f"trial_{trial.number}"
+                config: parameter.Parameter = self.optimizer.ask()
+                name = f"{self.counter}_{config.value}_{self.nevergrad_cfg.seed}"
+                self.history[name] = (config, None)
+                self.counter += 1
                 return Query(
-                    config=Config(config_id=name, values=trial.params),
+                    config=Config(
+                        config_id=name,
+                        values=config.value),
+                        # allow_inactive_with_values=True,
                     fidelity=None,
-                    optimizer_info=trial,
+                    optimizer_info=config,
                 )
             case tuple():
                 # TODO(eddiebergman): Not sure if just using
                 # trial.number is enough in MF setting
-                raise NotImplementedError("# TODO: Fidelity-aware not yet implemented for Optuna!")
+                raise NotImplementedError("# TODO: Fidelity-aware not available in Nevergrad!")
             case Mapping():
-                raise NotImplementedError("# TODO: Fidelity-aware not yet implemented for Optuna!")
+                raise NotImplementedError("# TODO: Fidelity-aware not available in Nevergad!")
             case _:
                 raise TypeError("Fidelity must be None or a tuple!")
 
@@ -125,18 +143,16 @@ class NevergradOptimizer(Optimizer):
             case None:
                 pass
             case tuple():
-                raise NotImplementedError("# TODO: Cost-aware not yet implemented for Optuna!")
+                raise NotImplementedError("# TODO: Cost-aware not yet implemented for Nevergrad!")
             case Mapping():
-                raise NotImplementedError("# TODO: Cost-aware not yet implemented for Optuna!")
+                raise NotImplementedError("# TODO: Cost-aware not yet implemented for Nevergrad!")
             case _:
                 raise TypeError("Cost must be None or a mapping!")
 
-        assert isinstance(result.query.optimizer_info, optuna.trial.Trial)
+        assert isinstance(result.query.optimizer_info, parameter.Parameter)
         self.optimizer.tell(
-            trial=result.query.optimizer_info,
-            values=_values,
-            state=optuna.trial.TrialState.COMPLETE,
-            skip_if_finished=False,
+            result.query.optimizer_info,
+            _values,
         )
 
 

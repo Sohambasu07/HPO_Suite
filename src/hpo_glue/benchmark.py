@@ -83,6 +83,9 @@ class BenchmarkDescription:
     env: Env = field(default_factory=Env.empty)
     """The environment needed to run this benchmark."""
 
+    mem_req_MB: int
+    """The memory requirement of the benchmark in MB."""
+
     def problem(  # noqa: C901, PLR0912
         self,
         budget: BudgetType | int,
@@ -90,6 +93,7 @@ class BenchmarkDescription:
         objectives: int = 1,
         costs: int = 0,
         multi_objective_generation: Literal["mix_metric_cost", "metric_only"] = "mix_metric_cost",
+        precision: int | None = None
     ) -> Problem:
         """Generate a problem for thie benchmark.
 
@@ -201,7 +205,14 @@ class BenchmarkDescription:
             case _:
                 raise TypeError(f"Unexpected type for `{budget=}`: {type(budget)}")
 
-        return Problem(benchmark=self, budget=_budget, fidelity=_fid, objective=_obj, cost=_cost)
+        return Problem(
+            benchmark=self,
+            budget=_budget,
+            fidelity=_fid,
+            objective=_obj,
+            cost=_cost,
+            precision=precision
+        )
 
 
 @dataclass(kw_only=True)
