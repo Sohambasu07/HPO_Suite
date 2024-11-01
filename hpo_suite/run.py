@@ -131,7 +131,6 @@ class Run:
         name_parts: list[str] = [
             self.problem.name,
             f"seed={self.seed}",
-            f"optimizer={self.optimizer.name}",
         ]
         if len(self.optimizer_hyperparameters) > 0:
             name_parts.append(
