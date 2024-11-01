@@ -36,7 +36,7 @@ class DEHB_Optimizer(Optimizer):
         tabular=False,
     )
 
-    mem_req_MB = 1024
+    mem_req_mb = 1024
 
     def __init__(
         self,

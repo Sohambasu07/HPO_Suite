@@ -100,7 +100,7 @@ def pymoo_problems() -> Iterator[BenchmarkDescription]:
                     "value": Measure.metric((-np.inf, np.inf), minimize=True),
                 },
             is_tabular=False,
-            mem_req_MB=1024,
+            mem_req_mb=1024,
         )
 
 def pymoo_benchmarks(datadir: Path | None = None) -> Iterator[BenchmarkDescription]:
