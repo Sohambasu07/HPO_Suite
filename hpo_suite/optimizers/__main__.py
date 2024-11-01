@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import logging
 
-from hpo_glue.optimizers import (
+from hpo_suite.optimizers import (
     BB_OPTIMIZERS,
     MF_OPTIMIZERS,
     MO_OPTIMIZERS,

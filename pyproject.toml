@@ -1,5 +1,5 @@
 [project]
-name = "HPO_Suite"
+name = "hpo_suite"
 version = "0.1.0"
 requires-python = ">=3.10"
 dependencies = [
@@ -8,7 +8,8 @@ dependencies = [
   "tqdm", 
   "more_itertools",
   "pyyaml",
-  "ConfigSpace"
+  "ConfigSpace",
+  "hpo_glue @ file:///home/soham/repos/HPOSuite_restructuring/hpo_glue?editable=true"
   ]
 authors = [
   { name = "Soham Basu", email = "soham.basu07@gmail.com" },
@@ -32,6 +33,12 @@ classifiers = [
   'Programming Language :: Python :: 3.11',
 ]
 license = { file = "LICENSE" }
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["hpo_suite"]
+exclude = ["configs", "examples", "tests", "scripts"]
+namespaces = false
 
 [project.optional-dependencies]
 dev = ["ruff", "mypy", "pre-commit"]
@@ -154,6 +161,7 @@ exclude = [
   "node_modules",
   "venv",
   "docs",
+  "configs"
 ]
 
 # Exclude a variety of commonly ignored directories.
@@ -190,7 +198,7 @@ exclude = [
 
 
 [tool.ruff.lint.isort]
-known-first-party = ["hpo_glue"]
+known-first-party = ["hpo_suite"]
 no-lines-before = ["future"]
 required-imports = ["from __future__ import annotations"]
 combine-as-imports = true
@@ -205,7 +213,7 @@ max-args = 10 # Changed from default of 5
 
 [tool.mypy]
 python_version = "3.10"
-packages = ["src/hpo_glue", "tests"]
+packages = ["hpo_suite", "tests"]
 
 show_error_codes = true
 

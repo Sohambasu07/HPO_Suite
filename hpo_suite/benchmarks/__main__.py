@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import logging
 
-from hpo_glue.benchmarks import BENCHMARKS, MF_BENCHMARKS, NON_MF_BENCHMARKS
+from hpo_suite.benchmarks import BENCHMARKS, MF_BENCHMARKS, NON_MF_BENCHMARKS
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

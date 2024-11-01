@@ -3,17 +3,18 @@ from __future__ import annotations
 import logging
 import shutil
 import subprocess
+import traceback
 import warnings
 from collections.abc import Hashable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
+from itertools import product
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, TypeAlias, TypeVar
 
 import numpy as np
 import pandas as pd
 import yaml
-
 from hpo_glue.benchmark import BenchmarkDescription
 from hpo_glue.budget import CostBudget, TrialBudget
 from hpo_glue.config import Config
@@ -67,17 +68,17 @@ class Run:
     seed: int
     """The seed used for the run."""
 
-    optimizer: type[Optimizer]
-    """The optimizer to use for this problem statement"""
+    optimizer: type[Optimizer] = field(init=False)
+    """The optimizer to use for the Problem"""
 
     expdir: Path = field(default=DEFAULT_RELATIVE_EXP_DIR)
     """Default directory to use for experiments."""
 
-    optimizer_hyperparameters: Mapping[str, Any] = field(default_factory=dict)
+    optimizer_hyperparameters: Mapping[str, Any] = field(default_factory=dict, init=False)
     """The hyperparameters to use for the optimizer"""
 
     benchmark: BenchmarkDescription = field(init=False)
-    """The benchmark that was run."""
+    """The benchmark that the Problem was run on."""
 
     env: Env = field(init=False)
     """The environment to setup the optimizer in for `isolated` mode."""
@@ -118,16 +119,18 @@ class Run:
     continuations: bool = field(default=False)
     """Whether to use continuations for the run."""
 
-    mem_req_MB: int = field(init=False)
-    """The memory requirement for the run in MB.
+    mem_req_mb: int = field(init=False)
+    """The memory requirement for the run in mb.
     Calculated as the sum of the memory requirements of the optimizer and the benchmark.
     """
 
     def __post_init__(self) -> None:
+        self.benchmark = self.problem.benchmark
+        self.optimizer = self.problem.optimizer
+        self.optimizer_hyperparameters = self.problem.optimizer_hyperparameters
         name_parts: list[str] = [
             self.problem.name,
             f"seed={self.seed}",
-            f"optimizer={self.optimizer.name}",
         ]
         if len(self.optimizer_hyperparameters) > 0:
             name_parts.append(
@@ -135,7 +138,6 @@ class Run:
             )
         self.name = ".".join(name_parts)
         self.optimizer.support.check_opt_support(who=self.optimizer.name, problem=self.problem)
-        self.benchmark = self.problem.benchmark
 
         match self.benchmark.env, self.optimizer.env:
             case (None, None):
@@ -161,7 +163,7 @@ class Run:
         self.post_install_steps = self.working_dir / "venv_post_install.sh"
         self.run_yaml_path = self.working_dir / "run_config.yaml"
         self.env_path = self.expdir / "envs" / self.env.identifier
-        self.mem_req_MB = self.problem.mem_req_MB + self.optimizer.mem_req_MB
+        self.mem_req_mb = self.problem.mem_req_mb + self.optimizer.mem_req_mb
 
     @property
     def venv(self) -> Venv:
@@ -225,11 +227,47 @@ class Run:
             )
         """
         self.set_state(Run.State.PENDING)
-        return _run(
+        _hist: list[Result] = []
+        try:
+            self.set_state(self.State.RUNNING)
+            _, _hist = _run(
+                problem=self.problem,
+                seed=self.seed,
+                run_name=self.name,
+                on_error=on_error,
+                progress_bar=progress_bar,
+                continuations=self.continuations,
+            )
+        except Exception as e:
+            self.set_state(Run.State.CRASHED, err_tb=(e, traceback.format_exc()))
+            logger.exception(e)
+            logger.error(f"Error in Run {self.name}: {e}")
+        logger.info(f"COMPLETED running {self.name}")
+        logger.info(f"Saving {self.name} at {self.working_dir}")
+        logger.info(f"Results dumped at {self.df_path.absolute()}")
+        return self.post_process(history=_hist)
+
+
+    def post_process(
+        self,
+        *,
+        history: list[Result],
+    ) -> Report:
+        """Post process the run.
+
+        Args:
+            history: The history of the run.
+
+        Returns:
+            The Report of the run.
+        """
+        report = Run.Report(
             run=self,
-            on_error=on_error,
-            progress_bar=progress_bar,
+            results=history,
         )
+        self.set_state(Run.State.COMPLETE, df=report.df())
+        return report
+
 
     def create_env(
         self,
@@ -306,7 +344,7 @@ class Run:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Run:
-        from hpo_glue.optimizers import OPTIMIZERS
+        from hpo_suite.optimizers import OPTIMIZERS
 
         if data["optimizer"] not in OPTIMIZERS:
             raise ValueError(
@@ -379,14 +417,14 @@ class Run:
                 self.working_dir.mkdir(parents=True, exist_ok=True)
                 self.df_path.parent.mkdir(parents=True, exist_ok=True)
 
-                lines = subprocess.run(
-                    [self.venv.pip, "freeze"],  # noqa: S603
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                )
-                with self.requirements_ran_with_file.open("w") as f:
-                    f.write(lines.stdout)
+                # lines = subprocess.run(
+                #     [self.venv.pip, "freeze"],  # noqa: S603
+                #     check=True,
+                #     capture_output=True,
+                #     text=True,
+                # )
+                # with self.requirements_ran_with_file.open("w") as f:
+                #     f.write(lines.stdout)
 
                 self.running_flag.touch()
 
@@ -424,7 +462,7 @@ class Run:
 
 
     @classmethod
-    def generate(  # noqa: C901, PLR0912, PLR0913
+    def generate(  # noqa: C901, PLR0912, PLR0913, PLR0915
         cls,
         optimizers: (
             type[Optimizer]
@@ -473,6 +511,8 @@ class Run:
                 * "warn": Log a warning and continue.
                 * "raise": Raise an error.
                 * "ignore": Ignore the error and continue.
+            continuations: Whether to use continuations for the run.
+            precision: The precision to use for the HP configs.
         """
         # Generate seeds
         match seeds:
@@ -495,10 +535,23 @@ class Run:
                     f" got {type(benchmarks)}"
                 )
 
+        _optimizers: list[OptWithHps]
+        match optimizers:
+            case tuple():
+                _opt, hps = optimizers
+                _optimizers = [(_opt, hps)]
+            case list():
+                _optimizers = [o if isinstance(o, tuple) else (o, {}) for o in optimizers]
+            case _:
+                _optimizers = [(optimizers, {})]
+
         _problems: list[Problem] = []
-        for _benchmark in _benchmarks:
+        for (opt, hps), bench in product(_optimizers, _benchmarks):
             try:
-                _problem = _benchmark.problem(
+                _problem = Problem.problem(
+                    optimizer=opt,
+                    optimizer_hyperparameters=hps,
+                    benchmark=bench,
                     objectives=objectives,
                     budget=budget,
                     fidelities=fidelities,
@@ -518,15 +571,18 @@ class Run:
                         continue
 
         _runs_per_problem: list[Run] = []
-        for _problem in _problems:
+        for _problem, _seed in product(_problems, seeds):
             try:
-                _runs = _problem.generate_runs(
-                    optimizers=optimizers,
-                    seeds=seeds,
-                    expdir=expdir,
-                    continuations = continuations
+                if "single" not in _problem.optimizer.support.fidelities:
+                    continuations = False
+                _runs_per_problem.append(
+                    Run(
+                        problem=_problem,
+                        seed=_seed,
+                        expdir=Path(expdir),
+                        continuations=continuations
+                    )
                 )
-                _runs_per_problem.extend(_runs)
             except ValueError as e:
                 match on_error:
                     case "raise":
@@ -566,13 +622,13 @@ class Run:
                 case _:
                     return [cls(s) if isinstance(s, str) else s for s in state]
 
+
     @dataclass
     class Report:
         """The report of a Run."""
 
         run: Run
         results: list[Result]
-        tuple_configs_dict: dict[tuple, dict[str, list[int | float]]] = field(default_factory=dict)
 
         problem: Problem = field(init=False)
 

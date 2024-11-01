@@ -4,25 +4,26 @@ import logging
 import warnings
 from collections.abc import Iterable, Mapping
 from datetime import datetime
+from itertools import product
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, TypeAlias
 
 import numpy as np
-
 from hpo_glue.benchmark import BenchmarkDescription
-from hpo_glue.benchmarks import BENCHMARKS
 from hpo_glue.constants import DEFAULT_RELATIVE_EXP_DIR
 from hpo_glue.env import (
     GLUE_PYPI,
     get_current_installed_hpo_glue_version,
 )
 from hpo_glue.optimizer import Optimizer
-from hpo_glue.optimizers import OPTIMIZERS
+from hpo_glue.problem import Problem
+
+from hpo_suite.benchmarks import BENCHMARKS
+from hpo_suite.optimizers import OPTIMIZERS
+from hpo_suite.run import Run
 
 if TYPE_CHECKING:
     from hpo_glue.budget import BudgetType
-    from hpo_glue.problem import Problem
-    from hpo_glue.run import Run
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)
@@ -38,7 +39,7 @@ GLOBAL_SEED = 42
 
 
 class Study:
-    """Represents a Glue study for hyperparameter optimization."""
+    """Represents a Suite study for hyperparameter optimization."""
     def __init__(
         self,
         name: str,
@@ -66,7 +67,7 @@ class Study:
 
 
     @classmethod
-    def generate(  # noqa: C901, PLR0912, PLR0913
+    def generate(  # noqa: C901, PLR0912, PLR0913, PLR0915
         cls,
         optimizers: (
             type[Optimizer]
@@ -115,6 +116,8 @@ class Study:
                 * "warn": Log a warning and continue.
                 * "raise": Raise an error.
                 * "ignore": Ignore the error and continue.
+            continuations: Whether to use continuations for the run.
+            precision: The precision to use for the HP configs.
         """
         # Generate seeds
         match seeds:
@@ -137,10 +140,23 @@ class Study:
                     f" got {type(benchmarks)}"
                 )
 
+        _optimizers: list[OptWithHps]
+        match optimizers:
+            case tuple():
+                _opt, hps = optimizers
+                _optimizers = [(_opt, hps)]
+            case list():
+                _optimizers = [o if isinstance(o, tuple) else (o, {}) for o in optimizers]
+            case _:
+                _optimizers = [(optimizers, {})]
+
         _problems: list[Problem] = []
-        for _benchmark in _benchmarks:
+        for (opt, hps), bench in product(_optimizers, _benchmarks):
             try:
-                _problem = _benchmark.problem(
+                _problem = Problem.problem(
+                    optimizer=opt,
+                    optimizer_hyperparameters=hps,
+                    benchmark=bench,
                     objectives=objectives,
                     budget=budget,
                     fidelities=fidelities,
@@ -160,15 +176,18 @@ class Study:
                         continue
 
         _runs_per_problem: list[Run] = []
-        for _problem in _problems:
+        for _problem, _seed in product(_problems, seeds):
             try:
-                _runs = _problem.generate_runs(
-                    optimizers=optimizers,
-                    seeds=seeds,
-                    expdir=expdir,
-                    continuations = continuations
+                if "single" not in _problem.optimizer.support.fidelities:
+                    continuations = False
+                _runs_per_problem.append(
+                    Run(
+                        problem=_problem,
+                        seed=_seed,
+                        expdir=Path(expdir),
+                        continuations=continuations
+                    )
                 )
-                _runs_per_problem.extend(_runs)
             except ValueError as e:
                 match on_error:
                     case "raise":
@@ -261,7 +280,7 @@ class Study:
                 case "seed":
                     key = str(run.seed)
                 case "mem":
-                    key = f"{run.mem_req_MB}MB"
+                    key = f"{run.mem_req_mb}mb"
                 case _:
                     raise ValueError(f"Invalid group_by: {group_by}")
 
@@ -302,7 +321,7 @@ class Study:
             logger.info(f"Dumped experiments to {exp_dir / f'dump_{key}.txt'}")
 
 
-    def optimize(  # noqa: C901, PLR0912
+    def optimize(  # noqa: C901, PLR0912, PLR0913
         self,
         optimizers: (
             str
@@ -339,14 +358,7 @@ class Study:
 
             budget: The budget for the experiment.
 
-            overwrite: Whether to overwrite existing results.
-
-            continuations: Whether to calculate continuations cost.
-            Note: Only works for Multi-fidelity Optimizers.
-
             precision: The precision of the optimization run(s).
-
-            expdir: The directory to store experiment results.
 
             exec_type: The type of execution to use.
             Supported types are "sequential", "parallel" and "dump".
@@ -354,6 +366,16 @@ class Study:
             group_by: The grouping to use for the runs dump.
             Supported types are "opt", "bench", "opt_bench", "seed", and "mem"
             Only used when `exec_type` is "dump" for multiple runs.
+
+            overwrite: Whether to overwrite existing results.
+
+            continuations: Whether to calculate continuations cost.
+            Note: Only works for Multi-fidelity Optimizers.
+
+            on_error: The method to handle errors.
+                    * "warn": Log a warning and continue.
+                    * "raise": Raise an error.
+                    * "ignore": Ignore the error and continue.
 
         """
         if not isinstance(optimizers, list):
@@ -400,19 +422,12 @@ class Study:
         for run in self.experiments:
             run.write_yaml()
 
-        _multirun = False
-
-        if (
-            len(_optimizers) > 1 or
-            len(_benchmarks) > 1 or
-            (seeds is not None and len(seeds) > 1) or
-            num_seeds > 1
-        ):
+        if (len(self.experiments) > 1):
             match exec_type:
                 case "sequential":
                     logger.info("Running experiments sequentially")
                     for run in self.experiments:
-                        run.create_env(hpo_glue=f"-e {Path.cwd()}")
+                        # run.create_env(hpo_glue=f"-e {Path.cwd()}")
                         run.run(
                             overwrite=overwrite,
                             progress_bar=False,
@@ -431,7 +446,7 @@ class Study:
                     raise ValueError(f"Invalid exceution type: {exec_type}")
         else:
             run = self.experiments[0]
-            run.create_env(hpo_glue=f"-e {Path.cwd()}")
+            # run.create_env(hpo_glue=f"-e {Path.cwd()}")
             run.run(
                 overwrite=overwrite,
                 progress_bar=False,

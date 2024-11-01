@@ -131,7 +131,7 @@ class SMAC_BO(SMAC_Optimizer):
         tabular=False,
     )
 
-    mem_req_MB = 1024
+    mem_req_mb = 1024
 
     def __init__(
         self,
@@ -224,7 +224,7 @@ class SMAC_Hyperband(SMAC_Optimizer):
         cost_awareness=(None,),
         tabular=False,
     )
-    mem_req_MB = 1024
+    mem_req_mb = 1024
 
     def __init__(
         self,

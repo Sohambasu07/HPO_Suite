@@ -1,4 +1,4 @@
-from hpo_glue.study import create_study
+from hpo_suite.study import create_study
 
 if __name__ == "__main__":
     study = create_study(

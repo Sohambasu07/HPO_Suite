@@ -186,7 +186,7 @@ def lcbench_surrogate(datadir: Path | None = None) -> Iterator[BenchmarkDescript
                 "epoch": RangeFidelity.from_tuple((1, 52, 1), supports_continuation=True),
             },
             env=env,
-            mem_req_MB=4096,
+            mem_req_mb=4096,
         )
 
 
@@ -266,7 +266,7 @@ def lcbench_tabular(datadir: Path | None = None) -> Iterator[BenchmarkDescriptio
                 "test_cross_entropy": Measure.test_metric(bounds=(0, np.inf), minimize=True),
             },
             env=env,
-            mem_req_MB=4096,
+            mem_req_mb=4096,
         )
 
 
@@ -306,7 +306,7 @@ def mfh(datadir: Path | None = None) -> Iterator[BenchmarkDescription]:
                 has_conditionals=False,
                 is_tabular=False,
                 env=env,
-                mem_req_MB = 1024,
+                mem_req_mb = 1024,
             )
 
 
@@ -353,7 +353,7 @@ def jahs(datadir: Path | None = None) -> Iterator[BenchmarkDescription]:
             has_conditionals=False,
             is_tabular=False,
             env=env,
-            mem_req_MB=12288,
+            mem_req_mb=12288,
         )
 
 
@@ -386,7 +386,7 @@ def pd1(datadir: Path | None = None) -> Iterator[BenchmarkDescription]:
         is_tabular=False,
         has_conditionals=False,
         env=env,
-        mem_req_MB=12288,
+        mem_req_mb=12288,
     )
     yield BenchmarkDescription(
         name="pd1-imagenet-resnet-512",
@@ -400,7 +400,7 @@ def pd1(datadir: Path | None = None) -> Iterator[BenchmarkDescription]:
         is_tabular=False,
         has_conditionals=False,
         env=env,
-        mem_req_MB=12288,
+        mem_req_mb=12288,
     )
     yield BenchmarkDescription(
         name="pd1-lm1b-transformer-2048",
@@ -414,7 +414,7 @@ def pd1(datadir: Path | None = None) -> Iterator[BenchmarkDescription]:
         is_tabular=False,
         has_conditionals=False,
         env=env,
-        mem_req_MB=24576,
+        mem_req_mb=24576,
     )
     yield BenchmarkDescription(
         name="pd1-translate_wmt-xformer_translate-64",
@@ -428,7 +428,7 @@ def pd1(datadir: Path | None = None) -> Iterator[BenchmarkDescription]:
         is_tabular=False,
         has_conditionals=False,
         env=env,
-        mem_req_MB=24576,
+        mem_req_mb=24576,
     )
 
 
